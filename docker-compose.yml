@@ -37,6 +37,28 @@ services:
     networks:
       - fairprice_network
 
+  # MinIO — S3-compatible evidence vault (local). Swap to Cloudflare R2 in prod
+  # by setting STORAGE_BACKEND=r2 + R2_* vars in .env (no compose change needed).
+  minio:
+    image: minio/minio:latest
+    container_name: fairprice_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fairprice_network
+
   # FastAPI application
   api:
     build:
@@ -48,6 +70,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fairprice}:${POSTGRES_PASSWORD:-fairprice123}@db:5432/${POSTGRES_DB:-fairprice_watchdog}
       REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
     ports:
       - "8000:8000"
     volumes:
@@ -56,6 +79,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - fairprice_network
@@ -72,6 +97,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fairprice}:${POSTGRES_PASSWORD:-fairprice123}@db:5432/${POSTGRES_DB:-fairprice_watchdog}
       REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
     volumes:
       - .:/app
     depends_on:
@@ -79,10 +105,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     networks:
       - fairprice_network
     command: python -m app.worker
-    # Note: You'll need to create app/worker.py for the actual worker implementation
 
 networks:
   fairprice_network:
@@ -91,5 +118,6 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
 
 # Made with Bob

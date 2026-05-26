@@ -61,6 +61,7 @@ alembic/versions/__pycache__/
 # MinIO/Storage
 storage/
 uploads/
+evidence_store/
 
 # Temporary files
 *.tmp

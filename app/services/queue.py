@@ -26,25 +26,37 @@ async def get_redis_client() -> aioredis.Redis:
     return _redis_client
 
 
-async def enqueue_scan(scan_id: str) -> bool:
+async def enqueue_scan(scan_id: str, states: Optional[list] = None) -> bool:
     """
     Enqueue a scan job to Redis queue
-    
+
     Args:
         scan_id: UUID of the scan to enqueue
-        
+        states: optional list of US state codes to compare for this scan
+
     Returns:
         bool: True if successfully enqueued
     """
     redis = await get_redis_client()
-    
+
     # Add to scan queue
     await redis.lpush("scan_queue", scan_id)  # type: ignore
-    
-    # Set initial status
+
+    # Set initial status + requested states
     await redis.hset(f"scan:{scan_id}", "status", "queued")  # type: ignore
-    
+    await redis.hset(f"scan:{scan_id}", "states", json.dumps(states or []))  # type: ignore
+
     return True
+
+
+async def get_scan_states(scan_id: str) -> list:
+    """Return the requested state codes for a scan (empty list if none set)."""
+    redis = await get_redis_client()
+    raw = await redis.hget(f"scan:{scan_id}", "states")  # type: ignore
+    try:
+        return json.loads(raw) if raw else []
+    except (ValueError, TypeError):
+        return []
 
 
 async def get_scan_status(scan_id: str) -> Optional[str]:
