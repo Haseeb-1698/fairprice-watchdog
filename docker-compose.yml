@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector extension
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: fairprice_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fairprice}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fairprice123}
+      POSTGRES_DB: ${POSTGRES_DB:-fairprice_watchdog}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fairprice}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fairprice_network
+
+  # Redis cache and queue
+  redis:
+    image: redis:7-alpine
+    container_name: fairprice_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fairprice_network
+
+  # FastAPI application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fairprice_api
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fairprice}:${POSTGRES_PASSWORD:-fairprice123}@db:5432/${POSTGRES_DB:-fairprice_watchdog}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fairprice_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Background worker for async tasks
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fairprice_worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fairprice}:${POSTGRES_PASSWORD:-fairprice123}@db:5432/${POSTGRES_DB:-fairprice_watchdog}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fairprice_network
+    command: python -m app.worker
+    # Note: You'll need to create app/worker.py for the actual worker implementation
+
+networks:
+  fairprice_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+
+# Made with Bob
