@@ -22,10 +22,13 @@ class Settings(BaseSettings):
     # Residential proxy zone (used by Crawler + Web Unlocker fetch).
     BRIGHTDATA_API_KEY: str = ""
     BRIGHTDATA_CUSTOMER_ID: str = ""
-    BRIGHTDATA_ZONE: str = ""                 # residential / unlocker zone name
+    BRIGHTDATA_ZONE: str = ""                 # Web Unlocker zone (used via /request API)
     BRIGHTDATA_ZONE_PASSWORD: str = ""
     BRIGHTDATA_PROXY_HOST: str = "brd.superproxy.io"
     BRIGHTDATA_PROXY_PORT: int = 33335
+    # Residential proxy zone — supports state/city/ZIP geo targeting (the demo axis)
+    BRIGHTDATA_RESIDENTIAL_ZONE: str = ""
+    BRIGHTDATA_RESIDENTIAL_PASSWORD: str = ""
     # Browser API (Scraping Browser) zone — drivable CDP endpoint for Journey Sim.
     BRIGHTDATA_BROWSER_ZONE: str = ""
     BRIGHTDATA_BROWSER_PASSWORD: str = ""
@@ -97,8 +100,9 @@ class Settings(BaseSettings):
 
     @property
     def brightdata_live(self) -> bool:
-        """True when residential-proxy credentials are present for live fetches."""
-        return bool(self.BRIGHTDATA_CUSTOMER_ID and self.BRIGHTDATA_ZONE and self.BRIGHTDATA_ZONE_PASSWORD)
+        """True when a residential proxy zone is configured (state/ZIP geo capable)."""
+        return bool(self.BRIGHTDATA_CUSTOMER_ID and self.BRIGHTDATA_RESIDENTIAL_ZONE
+                    and self.BRIGHTDATA_RESIDENTIAL_PASSWORD)
 
     @property
     def brightdata_unlocker_live(self) -> bool:

@@ -23,6 +23,15 @@ from app.services import brightdata          # noqa: E402
 TEST_URL = "https://geo.brdtest.com/welcome.txt?product=unlocker&method=api"
 
 
+def probe_residential(state: str) -> None:
+    """Verify state-level geo via the residential proxy zone."""
+    import requests
+    print(f"\n[{state}] residential proxy user: {brightdata.proxy_username(state)}")
+    r = requests.get(TEST_URL, proxies=brightdata.proxy_for_state(state), verify=False, timeout=60)
+    text = re.sub(r"\s+", " ", r.text).strip()
+    print(f"[{state}] {text[:300]}")
+
+
 def probe(state: str) -> str:
     print(f"\n[{state}] CDP: {brightdata.browser_cdp_url(state)}")
     html = brightdata._fetch_via_browser(TEST_URL, state, timeout=60)
@@ -36,15 +45,24 @@ def probe(state: str) -> str:
 
 
 def main() -> int:
-    print(f"brightdata_browser_live = {settings.brightdata_browser_live}")
-    if not settings.brightdata_browser_live:
-        print("Browser API not configured in .env — aborting.")
-        return 1
-    for st in ("CA", "TX"):
-        try:
-            probe(st)
-        except Exception as e:
-            print(f"[{st}] ERROR: {e}")
+    print(f"brightdata_live (residential) = {settings.brightdata_live}")
+    print(f"brightdata_browser_live       = {settings.brightdata_browser_live}")
+
+    if settings.brightdata_live:
+        print("\n--- Residential proxy geo (the demo axis) ---")
+        for st in ("CA", "TX"):
+            try:
+                probe_residential(st)
+            except Exception as e:
+                print(f"[{st}] residential ERROR: {e}")
+
+    if settings.brightdata_browser_live:
+        print("\n--- Browser API geo ---")
+        for st in ("CA", "TX"):
+            try:
+                probe(st)
+            except Exception as e:
+                print(f"[{st}] browser ERROR: {e}")
     print(f"\nCredits: {__import__('app.services.credits', fromlist=['summary']).summary()}")
     return 0
 

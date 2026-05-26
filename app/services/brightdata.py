@@ -59,7 +59,7 @@ def proxy_username(state: str, zone: Optional[str] = None) -> str:
     The `-state-<st>` segment is what makes the same listing resolve to a
     different price by location — the heart of the geo-discrimination proof.
     """
-    zone = zone or settings.BRIGHTDATA_ZONE
+    zone = zone or settings.BRIGHTDATA_RESIDENTIAL_ZONE
     st = (state or "").strip().lower()
     user = f"brd-customer-{settings.BRIGHTDATA_CUSTOMER_ID}-zone-{zone}-country-us"
     if st:
@@ -70,7 +70,7 @@ def proxy_username(state: str, zone: Optional[str] = None) -> str:
 def proxy_for_state(state: str) -> dict[str, str]:
     """Return a requests-style proxies dict for the residential zone in `state`."""
     user = proxy_username(state)
-    pwd = settings.BRIGHTDATA_ZONE_PASSWORD
+    pwd = settings.BRIGHTDATA_RESIDENTIAL_PASSWORD
     host = settings.BRIGHTDATA_PROXY_HOST
     port = settings.BRIGHTDATA_PROXY_PORT
     proxy_url = f"http://{user}:{pwd}@{host}:{port}"
@@ -149,18 +149,18 @@ def fetch_html(url: str, state: str, timeout: int = 60) -> FetchResult:
                        settings.BRIGHTDATA_CREDIT_CAP)
         return _mock_fetch(url, state)
 
-    # Priority: Web Unlocker API (cheap, country-level) → residential proxy
-    # (state-level) → Browser API render (state-level). Geo state-split for the
-    # demo comes from the Journey Simulator's Browser API walk regardless.
+    # Priority: residential proxy (true state/ZIP geo — the demo axis) → Web
+    # Unlocker API (country-level, cheap) → Browser API render. State geo for the
+    # split needs the residential zone; the others are country-level fallbacks.
     try:
-        if settings.brightdata_unlocker_live:
-            html = _fetch_via_unlocker_api(url, settings.BRIGHTDATA_ZONE, country="us", timeout=timeout)
-            source = "web_unlocker"
-        elif settings.brightdata_live:
+        if settings.brightdata_live:
             resp = requests.get(url, proxies=proxy_for_state(state), verify=False, timeout=timeout,
                                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             html = resp.text
             source = "residential"
+        elif settings.brightdata_unlocker_live:
+            html = _fetch_via_unlocker_api(url, settings.BRIGHTDATA_ZONE, country="us", timeout=timeout)
+            source = "web_unlocker"
         else:  # browser-only credentials
             html = _fetch_via_browser(url, state, timeout=timeout)
             source = "browser_api"
