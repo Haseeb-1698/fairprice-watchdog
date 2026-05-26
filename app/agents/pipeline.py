@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from app.agents.crawler import CrawlerAgent
 from app.agents.diff import DiffAgent
 from app.agents.journey import JourneyAgent
+from app.agents.law_mapper import LawMapperAgent
 from app.agents.types import GeoComparison, GeoListing, ScanBrief
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -43,6 +44,8 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
     crawl = CrawlerAgent().load(url, state)
     journey = JourneyAgent().walk(url, state)
     diff = DiffAgent().analyze(crawl["advertised_price"], journey["final_price"], journey["fees"])
+    # Law-Mapper sets the authoritative FTC clause (and can upgrade junk status).
+    fees = LawMapperAgent().enrich(diff["fees"])
 
     snap = storage.store_snapshot(scan_id, state, journey["html"])
 
@@ -50,7 +53,7 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         state=state,
         advertised_price=round(crawl["advertised_price"], 2),
         final_price=round(journey["final_price"], 2),
-        fees=diff["fees"],
+        fees=fees,
         html=journey["html"],
         snapshot_sha256=snap.sha256,
         snapshot_path=snap.storage_path,

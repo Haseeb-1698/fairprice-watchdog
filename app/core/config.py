@@ -101,6 +101,20 @@ class Settings(BaseSettings):
         return bool(self.BRIGHTDATA_CUSTOMER_ID and self.BRIGHTDATA_ZONE and self.BRIGHTDATA_ZONE_PASSWORD)
 
     @property
+    def brightdata_unlocker_live(self) -> bool:
+        """True when the Web Unlocker /request REST API is usable (Bearer token + zone)."""
+        return bool(self.BRIGHTDATA_API_KEY and self.BRIGHTDATA_ZONE)
+
+    @property
+    def brightdata_serp_live(self) -> bool:
+        """True when the SERP /request REST API is usable."""
+        return bool(self.BRIGHTDATA_API_KEY and self.BRIGHTDATA_SERP_ZONE)
+
+    @property
+    def brightdata_any_live(self) -> bool:
+        return self.brightdata_unlocker_live or self.brightdata_live or self.brightdata_browser_live
+
+    @property
     def brightdata_browser_live(self) -> bool:
         """True when Browser API credentials are present for live checkout walks."""
         return bool(self.BRIGHTDATA_CUSTOMER_ID and self.BRIGHTDATA_BROWSER_ZONE and self.BRIGHTDATA_BROWSER_PASSWORD)

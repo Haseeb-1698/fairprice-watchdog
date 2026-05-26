@@ -25,6 +25,7 @@ from typing import Optional
 import requests
 
 from app.core.config import settings
+from app.services import credits
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +81,10 @@ def browser_cdp_url(state: str) -> Optional[str]:
     """
     Return the Bright Data Browser API CDP websocket URL for `state`.
 
-    Journey Simulator (Skyvern / Playwright) connects to this to drive a real
-    remote browser through the checkout funnel. Returns None in mock mode.
+    Geo is set by modifying the username (Bright Data: "control your proxy by
+    modifying the username"), appending -country-us-state-<st>. This is what
+    makes the same listing render at a different price per state — the demo core.
+    Journey Simulator (Playwright / Skyvern) connects here. None in mock mode.
     """
     if not settings.brightdata_browser_live:
         return None
@@ -90,6 +93,43 @@ def browser_cdp_url(state: str) -> Optional[str]:
     host = settings.BRIGHTDATA_BROWSER_HOST
     port = settings.BRIGHTDATA_BROWSER_PORT
     return f"wss://{user}:{pwd}@{host}:{port}"
+
+
+# ── Web Unlocker /request REST API ────────────────────────────────────────────
+
+_REQUEST_API = "https://api.brightdata.com/request"
+
+
+def _fetch_via_unlocker_api(url: str, zone: str, country: str = "us", timeout: int = 90) -> str:
+    """Call Bright Data's /request API (Web Unlocker / SERP). Returns raw HTML."""
+    resp = requests.post(
+        _REQUEST_API,
+        headers={
+            "Authorization": f"Bearer {settings.BRIGHTDATA_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={"zone": zone, "url": url, "format": "raw", "country": country},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
+def _fetch_via_browser(url: str, state: str, timeout: int = 90) -> str:
+    """Render a page through the Bright Data Browser API (remote CDP) for `state`.
+
+    Needs the `playwright` client package (no local browser install required —
+    it connects to Bright Data's remote browser over CDP)."""
+    from playwright.sync_api import sync_playwright
+
+    cdp = browser_cdp_url(state)
+    with sync_playwright() as p:
+        browser = p.chromium.connect_over_cdp(cdp, timeout=timeout * 1000)
+        page = browser.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
+        html = page.content()
+        browser.close()
+    return html
 
 
 # ── Page fetch (Crawler) ──────────────────────────────────────────────────────
@@ -101,25 +141,31 @@ def fetch_html(url: str, state: str, timeout: int = 60) -> FetchResult:
     Live path: route through the Bright Data residential proxy (which fronts the
     Web Unlocker for anti-bot bypass). Mock path: synthesize state-dependent HTML.
     """
-    if not settings.brightdata_live:
+    if not settings.brightdata_any_live:
         return _mock_fetch(url, state)
 
+    if not credits.can_spend():
+        logger.warning("Bright Data credit cap reached (%d) — using mock to protect budget",
+                       settings.BRIGHTDATA_CREDIT_CAP)
+        return _mock_fetch(url, state)
+
+    # Priority: Web Unlocker API (cheap, country-level) → residential proxy
+    # (state-level) → Browser API render (state-level). Geo state-split for the
+    # demo comes from the Journey Simulator's Browser API walk regardless.
     try:
-        resp = requests.get(
-            url,
-            proxies=proxy_for_state(state),
-            verify=False,
-            timeout=timeout,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-        )
-        return FetchResult(
-            url=url,
-            state=state,
-            html=resp.text,
-            status_code=resp.status_code,
-            live=True,
-            source="residential",
-        )
+        if settings.brightdata_unlocker_live:
+            html = _fetch_via_unlocker_api(url, settings.BRIGHTDATA_ZONE, country="us", timeout=timeout)
+            source = "web_unlocker"
+        elif settings.brightdata_live:
+            resp = requests.get(url, proxies=proxy_for_state(state), verify=False, timeout=timeout,
+                                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            html = resp.text
+            source = "residential"
+        else:  # browser-only credentials
+            html = _fetch_via_browser(url, state, timeout=timeout)
+            source = "browser_api"
+        credits.record()
+        return FetchResult(url=url, state=state, html=html, status_code=200, live=True, source=source)
     except Exception as e:
         logger.warning("Bright Data fetch failed for %s @ %s (%s) — falling back to mock", url, state, e)
         return _mock_fetch(url, state)
@@ -130,15 +176,14 @@ def serp_search(query: str, state: str = "", num: int = 10) -> list[dict]:
     SERP API search for the Discovery agent (finding new operators).
     Stubbed for the two-geo demo; wired live when BRIGHTDATA_SERP_ZONE is set.
     """
-    if not (settings.brightdata_live and settings.BRIGHTDATA_SERP_ZONE):
+    if not settings.brightdata_serp_live:
         return [{"title": f"[mock] result {i+1} for {query}", "url": f"https://example.com/{i+1}"} for i in range(num)]
-    # Live SERP via Bright Data: a google search routed through the SERP zone.
+    # Live SERP via Bright Data /request API (zone=serp_api1).
     try:
         target = f"https://www.google.com/search?q={requests.utils.quote(query)}&num={num}"
-        user = proxy_username(state, zone=settings.BRIGHTDATA_SERP_ZONE)
-        proxy = f"http://{user}:{settings.BRIGHTDATA_ZONE_PASSWORD}@{settings.BRIGHTDATA_PROXY_HOST}:{settings.BRIGHTDATA_PROXY_PORT}"
-        resp = requests.get(target, proxies={"http": proxy, "https": proxy}, verify=False, timeout=60)
-        return [{"raw_html": resp.text[:200000], "query": query}]
+        html = _fetch_via_unlocker_api(target, settings.BRIGHTDATA_SERP_ZONE, country="us")
+        credits.record()
+        return [{"raw_html": html[:200000], "query": query}]
     except Exception as e:
         logger.warning("SERP search failed (%s) — returning mock", e)
         return [{"title": f"[mock] {query}", "url": "https://example.com"}]

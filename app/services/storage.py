@@ -64,6 +64,8 @@ def _get_client():
         from botocore.config import Config
 
         backend = settings.STORAGE_BACKEND.lower()
+        if backend == "local":
+            return None  # force the local ./evidence_store fallback (tests/dev)
         if backend == "r2":
             if not (settings.R2_ACCOUNT_ID and settings.R2_ACCESS_KEY_ID and settings.R2_SECRET_ACCESS_KEY):
                 logger.warning("R2 selected but credentials incomplete — using local fallback")
