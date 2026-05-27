@@ -162,20 +162,22 @@ def fetch_html(url: str, state: str, timeout: int = 60) -> FetchResult:
                        settings.BRIGHTDATA_CREDIT_CAP)
         return _mock_fetch(url, state)
 
-    # Priority for a geo-pinned fetch of a real (often anti-bot) site:
-    #   1. Web Unlocker proxy + state geo  — unlock AND state targeting (best)
-    #   2. Residential proxy + state geo    — true geo, lighter unlocking
-    #   3. Web Unlocker /request API        — strong unlock, country-level only
-    #   4. Browser API render               — country-level
+    # Priority for a geo-pinned fetch:
+    #   1. Residential proxy + state geo    — fast, reliable state targeting (default)
+    #   2. Web Unlocker proxy + state geo    — geo + heavy unblock (slower; for blocked sites)
+    #   3. Web Unlocker /request API         — strong unlock, country-level only
+    #   4. Browser API render                — country-level
+    # Residential is first because the Unlocker in proxy mode can stream keepalive
+    # bytes that defeat the read timeout on complex sites (observed hangs).
     try:
-        if settings.brightdata_unlocker_proxy_live:
-            html = _fetch_via_unlocker_proxy(url, state, timeout=timeout)
-            source = "unlocker_geo"
-        elif settings.brightdata_live:
+        if settings.brightdata_live:
             resp = requests.get(url, proxies=proxy_for_state(state), verify=False, timeout=(15, timeout),
                                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             html = resp.text
             source = "residential"
+        elif settings.brightdata_unlocker_proxy_live:
+            html = _fetch_via_unlocker_proxy(url, state, timeout=timeout)
+            source = "unlocker_geo"
         elif settings.brightdata_unlocker_live:
             html = _fetch_via_unlocker_api(url, settings.BRIGHTDATA_ZONE, country="us", timeout=timeout)
             source = "web_unlocker"

@@ -72,7 +72,7 @@ def _call_openai_compatible(endpoint: str, key: str, model: str, system: str, us
             f"{endpoint.rstrip('/')}/chat/completions",
             json=payload,
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            timeout=180,
+            timeout=(15, 60),
         )
         if r.status_code == 429:
             time.sleep(2 ** attempt * 3)
