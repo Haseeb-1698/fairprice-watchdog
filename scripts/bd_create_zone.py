@@ -37,6 +37,8 @@ PLANS = {
     "residential": {"type": "resident", "country": "us", "city": 1, "ips_type": "shared", "bandwidth": "payperusage"},
     "datacenter":  {"type": "static", "ip_alloc_preset": "shared_block", "ips_type": "datacenter"},
     "isp":         {"type": "static", "ip_alloc_preset": "shared_block", "ips_type": "res_static"},
+    # Web Unlocker with city:1 — anti-bot bypass AND state/ZIP geo (via proxy mode).
+    "unlocker":    {"type": "unblocker", "country": "us", "city": 1},
 }
 
 

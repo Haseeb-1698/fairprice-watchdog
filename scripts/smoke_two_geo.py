@@ -14,8 +14,11 @@ os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://x:x@localhost/x")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 # Force offline mock LLM for a deterministic, network-free smoke test.
 os.environ["LLM_PROVIDER"] = "mock"
-# Force offline: blank Bright Data creds so the smoke test never spends credits.
-for _k in ("BRIGHTDATA_API_KEY", "BRIGHTDATA_ZONE", "BRIGHTDATA_ZONE_PASSWORD",
+# Force offline: blank ALL Bright Data creds (env overrides .env). Every
+# BRIGHTDATA_* key must be listed or the smoke makes slow live fetches.
+for _k in ("BRIGHTDATA_API_KEY", "BRIGHTDATA_CUSTOMER_ID",
+           "BRIGHTDATA_ZONE", "BRIGHTDATA_ZONE_PASSWORD",
+           "BRIGHTDATA_RESIDENTIAL_ZONE", "BRIGHTDATA_RESIDENTIAL_PASSWORD",
            "BRIGHTDATA_BROWSER_ZONE", "BRIGHTDATA_BROWSER_PASSWORD", "BRIGHTDATA_SERP_ZONE"):
     os.environ[_k] = ""
 os.environ["STORAGE_BACKEND"] = "local"   # no network; write to ./evidence_store

@@ -110,13 +110,20 @@ class Settings(BaseSettings):
         return bool(self.BRIGHTDATA_API_KEY and self.BRIGHTDATA_ZONE)
 
     @property
+    def brightdata_unlocker_proxy_live(self) -> bool:
+        """True when the Web Unlocker can be used in proxy mode with state geo
+        (anti-bot bypass AND state/ZIP targeting in one)."""
+        return bool(self.BRIGHTDATA_CUSTOMER_ID and self.BRIGHTDATA_ZONE and self.BRIGHTDATA_ZONE_PASSWORD)
+
+    @property
     def brightdata_serp_live(self) -> bool:
         """True when the SERP /request REST API is usable."""
         return bool(self.BRIGHTDATA_API_KEY and self.BRIGHTDATA_SERP_ZONE)
 
     @property
     def brightdata_any_live(self) -> bool:
-        return self.brightdata_unlocker_live or self.brightdata_live or self.brightdata_browser_live
+        return (self.brightdata_unlocker_proxy_live or self.brightdata_unlocker_live
+                or self.brightdata_live or self.brightdata_browser_live)
 
     @property
     def brightdata_browser_live(self) -> bool:
