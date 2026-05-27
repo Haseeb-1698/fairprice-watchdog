@@ -10,6 +10,17 @@ import { stateName } from "../lib/states";
 const money = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
 
+// Detectability tag derived from the FTC clause (works for live + mock).
+function detectTag(clause?: string | null, isJunk?: boolean) {
+  const c = (clause || "").toLowerCase();
+  if (c.includes("outside rule scope") || c.includes("exempt") || c.includes("government"))
+    return { label: "Exempt (govt)", cls: "bg-slate-500/15 text-slate-400" };
+  if (c.includes("464.3") || c.includes("misrepresent"))
+    return { label: "Needs review", cls: "bg-warn/15 text-warn" };
+  if (isJunk) return { label: "Agent-clean", cls: "bg-fair/15 text-fair" };
+  return null;
+}
+
 interface Props {
   results: ScanResults;
   evidence: EvidenceSnapshot[];
@@ -191,10 +202,16 @@ function FeeBreakdown({ listing }: { listing: Listing }) {
         {listing.fees.map((f, i) => (
           <li key={i} className="group rounded-lg border border-ink-600 bg-ink-900/40 p-2.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-sm text-slate-200">
+              <span className="flex flex-wrap items-center gap-2 text-sm text-slate-200">
                 {f.is_junk_fee && (
                   <span className="rounded bg-violation/15 px-1.5 py-0.5 text-[10px] font-700 uppercase tracking-wide text-violation">Junk</span>
                 )}
+                {(() => {
+                  const t = detectTag(f.ftc_clause, f.is_junk_fee);
+                  return t ? (
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-600 ${t.cls}`}>{t.label}</span>
+                  ) : null;
+                })()}
                 {f.fee_name}
               </span>
               <span className="font-mono tabular text-sm text-slate-100">{money(f.fee_amount)}</span>

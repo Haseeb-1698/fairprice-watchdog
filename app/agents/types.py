@@ -18,6 +18,8 @@ class FeeItem:
     fee_type: str = "unknown"
     is_junk_fee: bool = False
     ftc_clause: Optional[str] = None
+    # agent-clean | partial | na  (na = government charge, excluded from junk total)
+    detectability: str = "partial"
 
 
 @dataclass

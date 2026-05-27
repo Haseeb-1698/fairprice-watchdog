@@ -43,10 +43,16 @@ class LawMapperAgent:
                     fee.ftc_clause = "Requires manual review against FTC 16 CFR Part 464"
                 continue
             fee.ftc_clause = entry.ftc_clause
-            # Taxonomy is authoritative for junk status when confident.
-            if entry.is_junk and score >= 0.45:
+            fee.detectability = entry.detectability
+            # Government charges (tax) are exempt under §464.1 — never flag as junk,
+            # so they're excluded from the junk-fee total (Matas's tax-strip note).
+            if entry.is_government:
+                fee.is_junk_fee = False
+                fee.detectability = "na"
+            elif entry.is_junk and score >= 0.45:
                 fee.is_junk_fee = True
-            logger.debug("[Law-Mapper] '%s' → %s (score=%.2f)", fee.fee_name, entry.fee_type, score)
+            logger.debug("[Law-Mapper] '%s' → %s (%s, score=%.2f)",
+                         fee.fee_name, entry.fee_type, entry.detectability, score)
         return fees
 
     def _match(self, fee: FeeItem) -> tuple[Optional[TaxonomyEntry], float]:
