@@ -1,22 +1,26 @@
 """
-Evidence endpoint - GET /evidence/{scan_id}
-Retrieves evidence data by scan ID
+Evidence endpoints - Store and retrieve evidence snapshots
 """
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from typing import List
 import uuid
+from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.models.evidence_snapshot import EvidenceSnapshot
 from app.schemas import EvidenceSnapshotResponse
+from app.services.evidence import store_evidence, get_evidence as get_evidence_service
 
 router = APIRouter()
 
 
+class StoreEvidenceRequest(BaseModel):
+    """Request body for storing evidence"""
+    html_content: str
+
+
 @router.get("/evidence/{scan_id}", response_model=List[EvidenceSnapshotResponse])
-async def get_evidence(
+async def get_evidence_endpoint(
     scan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ) -> List[EvidenceSnapshotResponse]:
@@ -30,21 +34,30 @@ async def get_evidence(
     Returns:
         List of evidence snapshots for the scan
     """
-    # Query all evidence snapshots for the scan
-    result = await db.execute(
-        select(EvidenceSnapshot)
-        .where(EvidenceSnapshot.scan_id == scan_id)
-        .order_by(EvidenceSnapshot.timestamp.desc())
-    )
-    snapshots = result.scalars().all()
+    return await get_evidence_service(scan_id, db)
+
+
+@router.post("/evidence/{scan_id}", response_model=EvidenceSnapshotResponse)
+async def store_evidence_endpoint(
+    scan_id: uuid.UUID,
+    request: StoreEvidenceRequest,
+    db: AsyncSession = Depends(get_db)
+) -> EvidenceSnapshotResponse:
+    """
+    Store HTML evidence for a scan
     
-    if not snapshots:
-        # Return empty list if no evidence found (not an error)
-        return []
+    Args:
+        scan_id: Unique identifier for the scan
+        request: Request body containing html_content
+        db: Database session
     
-    # Convert to response models
-    return [
-        EvidenceSnapshotResponse(
+    Returns:
+        Created evidence snapshot
+    """
+    try:
+        snapshot = await store_evidence(scan_id, request.html_content, db)
+        
+        return EvidenceSnapshotResponse(
             id=snapshot.id,
             scan_id=snapshot.scan_id,
             html_content=snapshot.html_content,
@@ -52,8 +65,11 @@ async def get_evidence(
             timestamp=snapshot.timestamp,
             storage_path=snapshot.storage_path
         )
-        for snapshot in snapshots
-    ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to store evidence: {str(e)}"
+        )
 
 
 # Made with Bob
