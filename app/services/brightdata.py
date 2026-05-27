@@ -109,9 +109,22 @@ def _fetch_via_unlocker_api(url: str, zone: str, country: str = "us", timeout: i
             "Content-Type": "application/json",
         },
         json={"zone": zone, "url": url, "format": "raw", "country": country},
-        timeout=timeout,
+        timeout=(15, timeout),
     )
     resp.raise_for_status()
+    return resp.text
+
+
+def _fetch_via_unlocker_proxy(url: str, state: str, timeout: int = 90) -> str:
+    """Fetch through the Web Unlocker in PROXY mode with state geo — anti-bot
+    bypass AND state/ZIP targeting in one (needs the unlocker zone password)."""
+    user = proxy_username(state, zone=settings.BRIGHTDATA_ZONE)
+    pwd = settings.BRIGHTDATA_ZONE_PASSWORD
+    proxy = f"http://{user}:{pwd}@{settings.BRIGHTDATA_PROXY_HOST}:{settings.BRIGHTDATA_PROXY_PORT}"
+    resp = requests.get(
+        url, proxies={"http": proxy, "https": proxy}, verify=False, timeout=(15, timeout),
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+    )
     return resp.text
 
 
@@ -149,12 +162,17 @@ def fetch_html(url: str, state: str, timeout: int = 60) -> FetchResult:
                        settings.BRIGHTDATA_CREDIT_CAP)
         return _mock_fetch(url, state)
 
-    # Priority: residential proxy (true state/ZIP geo — the demo axis) → Web
-    # Unlocker API (country-level, cheap) → Browser API render. State geo for the
-    # split needs the residential zone; the others are country-level fallbacks.
+    # Priority for a geo-pinned fetch of a real (often anti-bot) site:
+    #   1. Web Unlocker proxy + state geo  — unlock AND state targeting (best)
+    #   2. Residential proxy + state geo    — true geo, lighter unlocking
+    #   3. Web Unlocker /request API        — strong unlock, country-level only
+    #   4. Browser API render               — country-level
     try:
-        if settings.brightdata_live:
-            resp = requests.get(url, proxies=proxy_for_state(state), verify=False, timeout=timeout,
+        if settings.brightdata_unlocker_proxy_live:
+            html = _fetch_via_unlocker_proxy(url, state, timeout=timeout)
+            source = "unlocker_geo"
+        elif settings.brightdata_live:
+            resp = requests.get(url, proxies=proxy_for_state(state), verify=False, timeout=(15, timeout),
                                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             html = resp.text
             source = "residential"

@@ -36,6 +36,9 @@ from app.services.queue import update_scan_status
 
 logger = logging.getLogger(__name__)
 
+# Hard wall-clock cap per state (crawl + checkout walk + diff + snapshot).
+PER_STATE_TIMEOUT = int(os.environ.get("SCAN_PER_STATE_TIMEOUT", "180"))
+
 
 # ── Per-state work (blocking; run in a thread) ────────────────────────────────
 
@@ -106,10 +109,18 @@ async def _execute(scan_id: str, url: str, states: list[str]) -> list[GeoListing
         except Exception as e:
             logger.warning("CrewAI orchestration unavailable (%s) — direct agent path", e)
 
-    # Deterministic parallel fan-out (one thread per state).
-    return list(await asyncio.gather(
-        *[asyncio.to_thread(scan_state, scan_id, url, st) for st in states]
-    ))
+    # Deterministic parallel fan-out (one thread per state), each hard-capped so
+    # a slow/blocked fetch can never hang the worker.
+    async def _one(st: str) -> GeoListing:
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(scan_state, scan_id, url, st), timeout=PER_STATE_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error("State %s timed out after %ss — recording empty listing", st, PER_STATE_TIMEOUT)
+            return GeoListing(state=st, advertised_price=0.0, final_price=0.0, source="timeout")
+
+    return list(await asyncio.gather(*[_one(st) for st in states]))
 
 
 def _summarize(brief: ScanBrief) -> str:
