@@ -1,73 +1,101 @@
-"""Pydantic request/response schemas for the FairPrice Watchdog API."""
-from __future__ import annotations
-
+"""
+Pydantic request/response schemas
+"""
 from datetime import datetime
+from uuid import UUID
 from typing import List, Optional
-
 from pydantic import BaseModel, Field
 
 
-class ScanRequest(BaseModel):
-    url: str = Field(..., description="Listing / checkout URL to scan")
-    states: Optional[List[str]] = Field(
-        default=None,
-        description="US state codes to compare (default: server config, e.g. ['CA','TX'])",
+class ScanCreate(BaseModel):
+    """Schema for creating a new scan"""
+    url: str = Field(..., description="URL to scan for pricing information")
+    geos: List[str] = Field(
+        default=["california", "texas"],
+        description="List of geographic locations to scan"
     )
 
 
-class ScanCreateResponse(BaseModel):
-    scan_id: str
-    status: str
-    url: str
+class ScanResponse(BaseModel):
+    """Schema for scan response"""
+    id: UUID = Field(..., description="Unique scan identifier")
+    url: str = Field(..., description="URL being scanned")
+    status: str = Field(..., description="Current scan status")
+    created_at: datetime = Field(..., description="Timestamp when scan was created")
+    geos: List[str] = Field(..., description="Geographic locations being scanned")
+    
+    class Config:
+        from_attributes = True
 
 
-class FeeOut(BaseModel):
+class ListingResponse(BaseModel):
+    """Schema for listing response"""
+    id: UUID
+    scan_id: UUID
+    advertised_price: float
+    final_price: float
+    location_state: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class FeeResponse(BaseModel):
+    """Schema for fee response"""
+    id: UUID
+    listing_id: UUID
     fee_name: str
     fee_amount: float
     fee_type: str
     is_junk_fee: bool
     ftc_clause: Optional[str] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
-class ListingOut(BaseModel):
-    id: str
-    location_state: str
+class ListingWithFeesResponse(BaseModel):
+    """Schema for listing with associated fees"""
+    id: UUID
+    scan_id: UUID
     advertised_price: float
     final_price: float
-    hidden_fee_total: float
-    fees: List[FeeOut] = []
+    location_state: str
+    created_at: datetime
+    fees: List[FeeResponse] = []
+    
+    class Config:
+        from_attributes = True
 
 
-class ComparisonOut(BaseModel):
-    state_a: str
-    state_b: str
-    price_a: float
-    price_b: float
-    delta: float
-    pct: float
-    higher_state: str
-    discrimination_detected: bool
+class ScanResultsResponse(BaseModel):
+    """Schema for complete scan results"""
+    scan: ScanResponse
+    listings: List[ListingWithFeesResponse] = []
+    
+    class Config:
+        from_attributes = True
 
 
-class ResultsResponse(BaseModel):
-    scan_id: str
-    url: str
-    status: str
-    created_at: Optional[datetime] = None
-    listings: List[ListingOut] = []
-    comparison: Optional[ComparisonOut] = None
-    summary: str = ""
-
-
-class EvidenceItem(BaseModel):
-    id: str
-    state: Optional[str] = None
+class EvidenceSnapshotResponse(BaseModel):
+    """Schema for evidence snapshot response"""
+    id: UUID
+    scan_id: UUID
+    html_content: str
     sha256_hash: str
+    timestamp: datetime
     storage_path: Optional[str] = None
-    download_url: Optional[str] = None
-    timestamp: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
 
 
-class EvidenceResponse(BaseModel):
-    scan_id: str
-    snapshots: List[EvidenceItem] = []
+class ComplaintResponse(BaseModel):
+    """Schema for complaint generation response"""
+    complaint_url: str
+    scan_id: UUID
+
+
+# Made with Bob
