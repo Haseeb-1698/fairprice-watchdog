@@ -13,13 +13,17 @@ fairprice-watchdog/
 │   │   └── database.py      # SQLAlchemy async engine
 │   ├── api/
 │   │   └── routes/
-│   │       ├── scan.py      # POST /api/scan
+│   │       ├── scan.py      # POST /api/scan, GET /api/scan/{id}
 │   │       ├── results.py   # GET /api/results/{id}
 │   │       ├── evidence.py  # GET /api/evidence/{id}
-│   │       └── complaint.py # POST /api/generate-complaint
+│   │       ├── complaint.py # POST /api/generate-complaint/{id}
+│   │       └── stripe.py    # Stripe payment endpoints
 │   ├── models/              # SQLAlchemy ORM models
 │   ├── schemas/             # Pydantic request/response schemas
-│   └── services/            # Business logic services
+│   └── services/
+│       ├── queue.py         # Redis queue service
+│       ├── evidence.py      # Evidence storage service
+│       └── bundle.py        # Evidence bundle generation
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -77,9 +81,18 @@ The API will be available at `http://localhost:8000`
 
 ### Scan Operations
 - `POST /api/scan` - Initiate a new price monitoring scan
-- `GET /api/results/{id}` - Retrieve scan results by ID
-- `GET /api/evidence/{id}` - Retrieve evidence data by ID
-- `POST /api/generate-complaint` - Generate a formal complaint document
+- `GET /api/scan/{scan_id}` - Get scan status by ID
+- `GET /api/results/{scan_id}` - Retrieve complete scan results with listings and fees
+- `GET /api/evidence/{scan_id}` - Retrieve evidence snapshots by scan ID
+- `POST /api/generate-complaint/{scan_id}` - Generate and download evidence bundle ZIP file
+
+### Evidence Bundle
+The `/api/generate-complaint/{scan_id}` endpoint generates a comprehensive ZIP file containing:
+- **scan_summary.json**: Complete scan details, listings, and fees
+- **evidence/{snapshot_id}.html**: All HTML evidence snapshots
+- **manifest.json**: SHA256 hashes of all files for integrity verification
+
+This bundle is designed for class-action lawsuits and regulatory complaints.
 
 ## API Documentation
 
@@ -100,9 +113,22 @@ Once the server is running, visit:
 
 ### Running Tests
 
+Run all integration tests:
 ```bash
 pytest
 ```
+
+Run with verbose output:
+```bash
+pytest -v
+```
+
+Run specific test:
+```bash
+pytest tests/test_api.py::test_health_check
+```
+
+See `tests/README.md` for more details on the test suite.
 
 ### Code Formatting
 
