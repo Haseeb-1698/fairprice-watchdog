@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { ShieldCheck, Search, MapPin, Zap, Globe2 } from "lucide-react";
-import { US_STATES } from "../lib/states";
+import { US_STATES, stateName } from "../lib/states";
+import Globe from "./Globe";
 
 export type RunMode = "live" | "demo";
 
@@ -30,28 +31,43 @@ export default function ScanInput({ live, onRun, disabled }: Props) {
 
   return (
     <section className="mx-auto max-w-5xl px-5 pt-16 pb-10 sm:pt-24">
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-      >
-        <div className="inline-flex items-center gap-2 rounded-full border border-gold-600/40 bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-400">
-          <ShieldCheck className="h-3.5 w-3.5" /> FTC Junk Fee Rule · 16 CFR Part 464
-        </div>
+      <div className="grid items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        >
+          <div className="inline-flex items-center gap-2 rounded-full border border-gold-600/40 bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-400">
+            <ShieldCheck className="h-3.5 w-3.5" /> FTC Junk Fee Rule · 16 CFR Part 464
+          </div>
 
-        <h1 className="mt-5 font-display text-4xl font-700 leading-[1.05] tracking-tight sm:text-6xl">
-          Catch hidden fees and
-          <br />
-          <span className="bg-gradient-to-r from-gold-400 to-gold-600 bg-clip-text text-transparent">
-            price discrimination
-          </span>{" "}
-          in real time.
-        </h1>
-        <p className="mt-4 max-w-2xl text-base text-slate-400 sm:text-lg">
-          We walk a real checkout funnel from two US states, expose every drip-priced junk fee,
-          map it to the exact FTC clause, and produce court-ready, hash-sealed evidence.
-        </p>
-      </motion.div>
+          <h1 className="mt-5 font-display text-4xl font-700 leading-[1.05] tracking-tight sm:text-6xl">
+            Catch hidden fees and
+            <br />
+            <span className="bg-gradient-to-r from-gold-400 to-gold-600 bg-clip-text text-transparent">
+              price discrimination
+            </span>{" "}
+            in real time.
+          </h1>
+          <p className="mt-4 max-w-2xl text-base text-slate-400 sm:text-lg">
+            We walk a real checkout funnel from two US states, expose every drip-priced junk fee,
+            map it to the exact FTC clause, and produce court-ready, hash-sealed evidence.
+          </p>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
+          className="flex flex-col items-center"
+        >
+          <Globe stateA={a} stateB={b} size={340} />
+          <p className="mt-1 text-center font-mono text-xs text-slate-500">
+            Same listing, same moment — <span className="text-gold-400">{stateName(a)}</span> vs{" "}
+            <span className="text-gold-400">{stateName(b)}</span>
+          </p>
+        </motion.div>
+      </div>
 
       <motion.form
         initial={{ opacity: 0, y: 20 }}

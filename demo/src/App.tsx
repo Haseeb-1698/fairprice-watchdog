@@ -4,6 +4,7 @@ import { Eye, Github, Info } from "lucide-react";
 import ScanInput, { RunMode } from "./components/ScanInput";
 import PipelineProgress from "./components/PipelineProgress";
 import Results from "./components/Results";
+import Landing from "./components/Landing";
 import {
   API_BASE, isLive, startScan, pollResults, getEvidence, generateComplaint,
   demoResults, demoEvidence,
@@ -139,6 +140,7 @@ export default function App() {
         {phase === "input" && (
           <motion.div key="input" exit={{ opacity: 0, y: -10 }}>
             <ScanInput live={isLive()} onRun={run} />
+            <Landing />
           </motion.div>
         )}
         {phase === "running" && (
