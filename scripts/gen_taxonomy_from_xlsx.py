@@ -19,7 +19,8 @@ import os
 import openpyxl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_XLSX = os.path.join(HERE, "..", "..", "FTC_Fee_Taxonomy.xlsx")
+# Source of truth lives in the repo at docs/FTC_Fee_Taxonomy.xlsx (owned by Matas).
+DEFAULT_XLSX = os.path.join(HERE, "..", "docs", "FTC_Fee_Taxonomy.xlsx")
 OUT = os.path.join(HERE, "..", "app", "agents", "ftc_taxonomy.py")
 
 # Sector context (rule covers lodging + ticketing federally; rentals via §5/UDAP).

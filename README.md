@@ -20,12 +20,12 @@ A FastAPI-based backend service for monitoring and detecting unfair pricing prac
 | **State-level geo verified live** (CA → Sacramento, TX → Katy) | ✅ |
 | Evidence vault — MinIO (local) + Cloudflare R2 (prod), SHA-256 hash chain | ✅ |
 | Multi-provider LLM (Kimi active / Claude Opus 4.7 / Azure / OpenAI / offline mock) | ✅ |
-| FTC Junk Fee taxonomy v1 (16 CFR Part 464) + pgvector seed | ✅ |
+| FTC taxonomy — **Matas's sheet integrated** (precise clauses, detectability tiers, tax-strip) | ✅ |
 | Firecrawl + markitdown extraction | ✅ |
 | VM deployment (API + worker + migrations + taxonomy seed) | ✅ |
 | Offline end-to-end smoke test | ✅ |
 | Live two-geo scan on **real** target sites | ⛔ needs Matas's demo URLs |
-| Real FTC taxonomy + semantic embeddings | ⛔ needs Matas's taxonomy sheet |
+| Semantic taxonomy embeddings (sentence-transformers) | 🟡 keyword match live; embeddings optional |
 | Skyvern live checkout walking (Playwright/CDP seam in place) | 🟡 |
 | Architecture diagram · backup demo video · submission tags | ⬜ |
 
@@ -39,16 +39,39 @@ A FastAPI-based backend service for monitoring and detecting unfair pricing prac
 | Evidence vault service + class-action bundle ZIP | ✅ |
 | Integration tests (pytest) | ✅ |
 | Stripe checkout/webhook | 🟡 stub |
-| `fee_taxonomy` populated | ✅ v1 (Matas's real taxonomy pending) |
+| `fee_taxonomy` populated | ✅ (Matas's 16-fee taxonomy) |
 | Deploy + public application URL | ⬜ |
 
 Others: **Matas** — FTC taxonomy sheet + 5 demo target sites + video script; **Tanzila / Eman Bashir** — view field needs + PDF input JSON shape; **Tom** — business model.
 
 ### ⛔ Blocking the live demo
 1. **Matas:** 5 demo URLs that price by *viewer* location and aren't behind heavy anti-bot (Cloudflare) — apartments.com prices by *listing* location, so it won't show a geo split.
-2. **Matas:** FTC taxonomy spreadsheet (`fee_type → clause → description`) to replace the v1 seed.
+2. ✅ **Matas's FTC taxonomy — delivered & integrated** (`docs/FTC_Fee_Taxonomy.xlsx`). Optional refinements requested: real-world fee labels + exact state-UDAP statutes.
 3. **Eman:** public deploy URL; align the complaint JSON (Filing agent output ↔ PDF generator input).
 4. **Note:** don't run `pytest` against the shared production DB — it drops the tables. Use a separate test DB / `.env.test`.
+
+---
+
+## FTC Fee Taxonomy (the Law-Mapper's brain)
+
+The source of truth is **`docs/FTC_Fee_Taxonomy.xlsx`** (owned by Matas). It maps 16
+fee types to FTC Junk Fee Rule clauses (16 CFR Part 464) with a **detectability**
+tier per fee, using the agent capability framework:
+
+- **agent-clean** — the agent catches it cleanly (hidden mandatory fee in the final total).
+- **partial** — agent detects the §464.2(a) disclosure violation; the §464.3 misrepresentation angle needs human review.
+- **na** — government charges (tax) are exempt under §464.1 and are **stripped** from the junk-fee total to avoid false positives.
+
+The sheet generates the agent's taxonomy module — never edit the module by hand:
+
+```bash
+python scripts/gen_taxonomy_from_xlsx.py          # docs/FTC_Fee_Taxonomy.xlsx -> app/agents/ftc_taxonomy.py
+python scripts/seed_taxonomy.py                   # -> Postgres fee_taxonomy (pgvector)
+```
+
+Columns: `fee_type` (matches the agent's vocabulary), `ftc_clause`, `clause_plain_language`,
+`description`, `keywords`, `detectability`, `agent_observation`, `notes`. The agent side
+also derives `sector` (lodging/ticketing/rental) and an `is_government` flag.
 
 ---
 
