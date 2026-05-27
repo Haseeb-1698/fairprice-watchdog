@@ -7,3 +7,7 @@ dist
 vite.config.js
 vite.config.d.ts
 *.tsbuildinfo
+
+# Root .gitignore excludes Python "lib/" — keep our frontend source lib/
+!src/lib/
+!src/lib/**
