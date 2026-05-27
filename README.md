@@ -4,48 +4,51 @@ A FastAPI-based backend service for monitoring and detecting unfair pricing prac
 
 ---
 
-## 📊 Project Status (team)
+## 📊 Project Status
 
-Updated alongside the agent-pipeline integration. ✅ done · 🟡 partial/stub · ⬜ not started.
+**Integrated:** the agent pipeline and the backend API are merged on a single `main`.
+**Deployed:** running on a Vultr VM — one API (`:8000`) + one worker against Postgres + Redis.
+
+✅ done · 🟡 partial · ⬜ not started · ⛔ blocked on a teammate
 
 ### Haseeb — Tech Lead & Agent Architect
 | Item | Status |
 |---|---|
-| Agent pipeline (two-geo demo path): Crawler → Journey → Diff | ✅ |
+| 6-agent pipeline: Crawler, Journey Simulator, Diff, Law-Mapper, Discovery, Filing | ✅ |
 | CrewAI orchestration + deterministic fallback | ✅ |
-| Bright Data client — geo residential proxy, Browser API CDP, SERP stub, mock fallback | ✅ |
-| Evidence vault — S3 client for **MinIO (local) + Cloudflare R2 (prod)**, SHA-256 hashing | ✅ |
-| Multi-provider LLM (Claude Opus 4.7 / Kimi / Azure / OpenAI / offline mock) | ✅ |
+| Bright Data — residential geo zone (created via API), Web Unlocker, Browser API, SERP; credit cap | ✅ |
+| **State-level geo verified live** (CA → Sacramento, TX → Katy) | ✅ |
+| Evidence vault — MinIO (local) + Cloudflare R2 (prod), SHA-256 hash chain | ✅ |
+| Multi-provider LLM (Kimi active / Claude Opus 4.7 / Azure / OpenAI / offline mock) | ✅ |
+| FTC Junk Fee taxonomy v1 (16 CFR Part 464) + pgvector seed | ✅ |
 | Firecrawl + markitdown extraction | ✅ |
-| Backend wiring: `POST /scan`, `GET /results`, `GET /evidence`, Redis worker | ✅ |
-| docker-compose + MinIO, requirements, `.env.example`, offline smoke test | ✅ |
-| **Law-Mapper agent** (pgvector over Matas's FTC taxonomy — currently light in Diff) | 🟡 |
-| **Discovery agent** (Bright Data SERP + Firecrawl — client stubbed) | 🟡 |
-| **Filing agent** (structured complaint JSON → hands to PDF) | ⬜ |
-| Skyvern live checkout nav (Playwright/CDP seam in place) | 🟡 |
-| changedetection.io diff engine, PaddleOCR, mem0 | ⬜ optional |
-| Live Bright Data run vs real target sites + credit tracking | ⬜ (needs `.env` creds) |
-| Architecture diagram + backup demo video + submission tags | ⬜ |
+| VM deployment (API + worker + migrations + taxonomy seed) | ✅ |
+| Offline end-to-end smoke test | ✅ |
+| Live two-geo scan on **real** target sites | ⛔ needs Matas's demo URLs |
+| Real FTC taxonomy + semantic embeddings | ⛔ needs Matas's taxonomy sheet |
+| Skyvern live checkout walking (Playwright/CDP seam in place) | 🟡 |
+| Architecture diagram · backup demo video · submission tags | ⬜ |
 
 ### Eman — Backend Engineer & DevOps
 | Item | Status |
 |---|---|
-| FastAPI scaffold, CORS, routers | ✅ |
+| FastAPI app, routers, CORS | ✅ |
 | Postgres schema + Alembic (scans, listings, fees, evidence_snapshots, complaints, fee_taxonomy/pgvector) | ✅ |
-| Redis queue service | ✅ (now consumed by the worker) |
-| docker-compose (db, redis) | ✅ (extended with MinIO) |
+| Redis queue (now consumed by the worker) | ✅ |
+| DB-backed endpoints: `/scan`, `/results`, `/evidence`, `/generate-complaint` | ✅ |
+| Evidence vault service + class-action bundle ZIP | ✅ |
+| Integration tests (pytest) | ✅ |
 | Stripe checkout/webhook | 🟡 stub |
-| **`POST /generate-complaint`** real implementation | ⬜ placeholder |
-| **Class-action evidence-bundle ZIP** endpoint | ⬜ |
-| **Populate `fee_taxonomy`** with Matas's clauses + embeddings | ⬜ |
-| **Integration tests** across the pipeline | ⬜ |
-| **Deploy** to Railway/Fly.io + live application URL | ⬜ |
+| `fee_taxonomy` populated | ✅ v1 (Matas's real taxonomy pending) |
+| Deploy + public application URL | ⬜ |
 
-> Handoff note for Eman: `POST /scan` now creates the row + enqueues; the worker
-> runs the pipeline and writes `listings`/`fees`/`evidence_snapshots`. Your
-> `/generate-complaint` can read those rows (+ `app/agents/types.py` shapes) to
-> build the complaint; the evidence vault (`app/services/storage.py`) gives you
-> presigned URLs and SHA-256 hashes for the PDF.
+Others: **Matas** — FTC taxonomy sheet + 5 demo target sites + video script; **Tanzila / Eman Bashir** — view field needs + PDF input JSON shape; **Tom** — business model.
+
+### ⛔ Blocking the live demo
+1. **Matas:** 5 demo URLs that price by *viewer* location and aren't behind heavy anti-bot (Cloudflare) — apartments.com prices by *listing* location, so it won't show a geo split.
+2. **Matas:** FTC taxonomy spreadsheet (`fee_type → clause → description`) to replace the v1 seed.
+3. **Eman:** public deploy URL; align the complaint JSON (Filing agent output ↔ PDF generator input).
+4. **Note:** don't run `pytest` against the shared production DB — it drops the tables. Use a separate test DB / `.env.test`.
 
 ---
 
@@ -68,16 +71,26 @@ fairprice-watchdog/
 │   ├── schemas/             # Pydantic request/response schemas
 │   ├── agents/              # Agent pipeline (Haseeb)
 │   │   ├── pipeline.py      #   run_scan() — two-geo orchestration entrypoint
-│   │   ├── crew.py          #   CrewAI orchestrator
-│   │   ├── crawler.py       #   Crawler agent (geo-load listing)
+│   │   ├── crew.py          #   CrewAI orchestrator (deterministic fallback)
+│   │   ├── crawler.py       #   Crawler (geo-load listing → advertised $)
 │   │   ├── journey.py       #   Journey Simulator (walk checkout, stop pre-payment)
-│   │   ├── diff.py          #   Diff agent (advertised vs final, junk-fee + FTC mapping)
-│   │   ├── llm.py           #   multi-provider LLM (Claude/Kimi/OpenAI/mock)
+│   │   ├── diff.py          #   Diff (advertised vs final, junk-fee detection)
+│   │   ├── law_mapper.py    #   Law-Mapper (fee → FTC clause, taxonomy match)
+│   │   ├── discovery.py     #   Discovery (SERP + Firecrawl operator finder)
+│   │   ├── filing.py        #   Filing (court-ready complaint/evidence JSON)
+│   │   ├── ftc_taxonomy.py  #   v1 FTC Junk Fee Rule taxonomy
+│   │   ├── embeddings.py    #   384-dim embeddings (optional)
+│   │   ├── llm.py           #   multi-provider LLM (Kimi/Claude/OpenAI/mock)
 │   │   ├── extract.py       #   HTML→markdown + price/fee parsing
 │   │   └── types.py         #   shared dataclasses
-│   ├── services/            # brightdata.py, storage.py (MinIO/R2), firecrawl_client.py, queue.py
+│   ├── services/            # brightdata.py, storage.py (MinIO/R2), firecrawl_client.py, credits.py, evidence.py, bundle.py, queue.py
 │   └── worker.py            # Redis-queue consumer → runs the pipeline
-├── scripts/smoke_two_geo.py # offline end-to-end demo test
+├── scripts/
+│   ├── smoke_full.py        # offline end-to-end test (all agents)
+│   ├── smoke_two_geo.py     # offline two-geo demo test
+│   ├── seed_taxonomy.py     # seed fee_taxonomy (pgvector)
+│   ├── bd_create_zone.py    # create Bright Data zones via API
+│   └── live_check.py        # live geo-fetch validation
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -111,13 +124,12 @@ Copy `.env.example` to `.env` and update with your actual values:
 cp .env.example .env
 ```
 
-Required environment variables:
-- `DATABASE_URL`: PostgreSQL connection string with asyncpg driver
+Only two are **required**:
+- `DATABASE_URL`: PostgreSQL connection string with the asyncpg driver
 - `REDIS_URL`: Redis connection string
-- `BRIGHTDATA_API_KEY`: BrightData API key for web scraping
-- `MINIO_ENDPOINT`: MinIO server endpoint
-- `MINIO_ACCESS_KEY`: MinIO access key
-- `MINIO_SECRET_KEY`: MinIO secret key
+
+Everything else (Bright Data, LLM, MinIO/R2) is **optional** — leave blank to run the
+pipeline in fully offline **mock mode** (no credentials, no credits used). See "Going live" below.
 
 ### 4. Run the Application
 
@@ -134,10 +146,11 @@ The API will be available at `http://localhost:8000`
 - `GET /health` - Health check
 
 ### Scan Operations
-- `POST /api/scan` - Initiate a new price monitoring scan
-- `GET /api/results/{id}` - Retrieve scan results by ID
-- `GET /api/evidence/{id}` - Retrieve evidence data by ID
-- `POST /api/generate-complaint` - Generate a formal complaint document
+- `POST /api/scan` — start a scan: `{"url": "...", "geos": ["california", "texas"]}` → `{id, status, ...}`
+- `GET /api/scan/{scan_id}` — scan status
+- `GET /api/results/{scan_id}` — listings + fees + geo comparison
+- `GET /api/evidence/{scan_id}` — evidence snapshots (SHA-256 hashed)
+- `POST /api/generate-complaint/{scan_id}` — court-ready evidence bundle ZIP
 
 ## API Documentation
 
@@ -213,8 +226,10 @@ python scripts/smoke_two_geo.py
 
 Fill the relevant blocks in `.env` (all optional, mix and match):
 
-- **Bright Data**: `BRIGHTDATA_CUSTOMER_ID`, `BRIGHTDATA_ZONE`, `BRIGHTDATA_ZONE_PASSWORD`
-  (residential geo) and `BRIGHTDATA_BROWSER_ZONE`/`_PASSWORD` (Browser API).
+- **Bright Data**: `BRIGHTDATA_CUSTOMER_ID`, `BRIGHTDATA_RESIDENTIAL_ZONE`/`_PASSWORD`
+  (state/ZIP geo — the demo axis), `BRIGHTDATA_API_KEY` + `BRIGHTDATA_ZONE` (Web Unlocker
+  `/request`), and `BRIGHTDATA_BROWSER_ZONE`/`_PASSWORD` (Browser API). Create a geo-capable
+  residential zone with `python scripts/bd_create_zone.py <name> resi`.
 - **LLM**: any one of `ANTHROPIC_API_KEY`, `KIMI_API_KEY`, `AZURE_KIMI_*`, `OPENAI_API_KEY`.
 - **Evidence vault**: default MinIO (in docker-compose), or set `STORAGE_BACKEND=r2`
   with `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
@@ -228,10 +243,15 @@ docker compose exec api alembic upgrade head   # create tables
 
 curl -X POST localhost:8000/api/scan \
   -H 'content-type: application/json' \
-  -d '{"url":"https://example.com/listing","states":["CA","TX"]}'
-# → {"scan_id":"...","status":"queued"}
-curl localhost:8000/api/results/<scan_id>
+  -d '{"url":"https://example.com/listing","geos":["california","texas"]}'
+# → {"id":"...","status":"queued", ...}
+curl localhost:8000/api/results/<id>
 ```
+
+> **Deployment:** a live instance runs on the project VM — one API on `:8000` + one
+> worker (the worker consumes the shared Redis `scan_queue`, so run exactly one).
+> Recreate tables after a fresh DB with `alembic upgrade head`, then seed the
+> taxonomy with `python scripts/seed_taxonomy.py`.
 
 ## Development
 
