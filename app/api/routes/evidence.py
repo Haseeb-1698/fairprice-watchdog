@@ -1,25 +1,59 @@
 """
-Evidence endpoint - GET /evidence/{id}
-Retrieves evidence data by ID
+Evidence endpoint - GET /evidence/{scan_id}
+Retrieves evidence data by scan ID
 """
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+import uuid
+
+from app.core.database import get_db
+from app.models.evidence_snapshot import EvidenceSnapshot
+from app.schemas import EvidenceSnapshotResponse
 
 router = APIRouter()
 
 
-@router.get("/evidence/{evidence_id}")
-async def get_evidence(evidence_id: str) -> Dict[str, Any]:
+@router.get("/evidence/{scan_id}", response_model=List[EvidenceSnapshotResponse])
+async def get_evidence(
+    scan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+) -> List[EvidenceSnapshotResponse]:
     """
-    Get evidence data by ID
+    Get evidence snapshots for a scan
     
     Args:
-        evidence_id: Unique identifier for the evidence
+        scan_id: Unique identifier for the scan
+        db: Database session
     
     Returns:
-        Evidence data
+        List of evidence snapshots for the scan
     """
-    # Placeholder implementation
-    return {"status": "ok", "evidence_id": evidence_id}
+    # Query all evidence snapshots for the scan
+    result = await db.execute(
+        select(EvidenceSnapshot)
+        .where(EvidenceSnapshot.scan_id == scan_id)
+        .order_by(EvidenceSnapshot.timestamp.desc())
+    )
+    snapshots = result.scalars().all()
+    
+    if not snapshots:
+        # Return empty list if no evidence found (not an error)
+        return []
+    
+    # Convert to response models
+    return [
+        EvidenceSnapshotResponse(
+            id=snapshot.id,
+            scan_id=snapshot.scan_id,
+            html_content=snapshot.html_content,
+            sha256_hash=snapshot.sha256_hash,
+            timestamp=snapshot.timestamp,
+            storage_path=snapshot.storage_path
+        )
+        for snapshot in snapshots
+    ]
+
 
 # Made with Bob
