@@ -50,6 +50,16 @@ app.include_router(evidence.router, prefix="/api", tags=["evidence"])
 app.include_router(complaint.router, prefix="/api", tags=["complaint"])
 app.include_router(stripe.router, prefix="/api", tags=["stripe"])
 
+# Serve the built demo UI at /app (if present) — reuses the API's open port so
+# the demo is reachable without opening another firewall port. Guarded so the
+# app still starts when demo/dist hasn't been built.
+import os as _os
+from fastapi.staticfiles import StaticFiles
+
+_demo_dist = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "demo", "dist")
+if _os.path.isdir(_demo_dist):
+    app.mount("/app", StaticFiles(directory=_demo_dist, html=True), name="demo")
+
 
 @app.get("/")
 async def root():
