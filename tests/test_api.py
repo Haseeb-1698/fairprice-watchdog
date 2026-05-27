@@ -17,14 +17,15 @@ from app.models.evidence_snapshot import EvidenceSnapshot
 @pytest.fixture(scope="function")
 async def db_session():
     """Create a fresh database session for each test"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
     async with AsyncSessionLocal() as session:
-        yield session
-    
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 @pytest.fixture
