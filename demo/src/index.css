@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-900 text-slate-100 font-sans antialiased;
+  background-image:
+    radial-gradient(900px 500px at 80% -10%, rgba(212, 175, 55, 0.10), transparent 60%),
+    radial-gradient(700px 500px at 0% 10%, rgba(34, 197, 94, 0.06), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Visible focus for keyboard users (a11y) */
+:focus-visible {
+  outline: 2px solid #f4c752;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
