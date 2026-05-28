@@ -46,3 +46,60 @@ export interface GeoComparison {
   delta: number;
   pct: number;
 }
+
+// ── Hunt types ────────────────────────────────────────────────────────────────
+
+export type HonestyLabel = "live_verified" | "live_partial" | "mock_fallback" | "blocked";
+
+export interface HuntPreset {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
+  default_city: string;
+  default_locations: string[];
+  demo_reliability: string;
+}
+
+export interface HuntCandidate {
+  title: string;
+  url: string;
+  source: string;
+}
+
+export interface ScoutResult {
+  url: string;
+  title: string;
+  reachable: boolean;
+  blocked: boolean;
+  has_prices: boolean;
+  has_fee_keywords: boolean;
+  score: number;
+  source: string;
+  eligible?: boolean;
+}
+
+export interface HuntScanResult {
+  scan_id: string;
+  url: string;
+  title: string;
+  honesty_label: HonestyLabel;
+  summary: string;
+  listings: Listing[];
+}
+
+export interface HuntStatus {
+  id: string;
+  sector: string;
+  label: string;
+  city: string;
+  locations: string[];
+  status: "queued" | "discovering" | "scouting" | "scanning" | "completed" | "failed";
+  phase: string;
+  candidates: HuntCandidate[];
+  scout_results: ScoutResult[];
+  scan_ids: string[];
+  results: HuntScanResult[];
+  created_at: string;
+  updated_at: string;
+}

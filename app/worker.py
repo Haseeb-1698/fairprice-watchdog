@@ -11,6 +11,7 @@ import uuid
 import redis.asyncio as aioredis
 
 from app.agents import pipeline
+from app.agents.hunt import HuntOrchestrator
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.scan import Scan
@@ -39,6 +40,43 @@ async def _handle(scan_id: str) -> None:
         logger.exception("Pipeline failed for scan %s: %s", scan_id, e)
 
 
+async def _scan_loop(redis: aioredis.Redis) -> None:
+    logger.info("⏳ Waiting for scan jobs on 'scan_queue'...")
+    while True:
+        try:
+            item = await redis.blpop("scan_queue", timeout=5)
+            if item is None:
+                continue
+            _, scan_id = item
+            logger.info("📥 Picked up scan %s", scan_id)
+            await _handle(scan_id)
+        except asyncio.CancelledError:
+            logger.info("🛑 Scan loop shutting down...")
+            break
+        except Exception as e:
+            logger.error("❌ Error in scan loop: %s", e)
+            await asyncio.sleep(2)
+
+
+async def _hunt_loop(redis: aioredis.Redis) -> None:
+    logger.info("⏳ Waiting for hunt jobs on 'hunt_queue'...")
+    orchestrator = HuntOrchestrator()
+    while True:
+        try:
+            item = await redis.blpop("hunt_queue", timeout=5)
+            if item is None:
+                continue
+            _, hunt_id = item
+            logger.info("🔍 Picked up hunt %s", hunt_id)
+            await orchestrator.run_hunt(hunt_id)
+        except asyncio.CancelledError:
+            logger.info("🛑 Hunt loop shutting down...")
+            break
+        except Exception as e:
+            logger.error("❌ Error in hunt loop: %s", e)
+            await asyncio.sleep(2)
+
+
 async def process_tasks() -> None:
     logger.info("🚀 Starting FairPrice Watchdog worker...")
     logger.info("📊 Redis: %s", settings.REDIS_URL)
@@ -51,21 +89,7 @@ async def process_tasks() -> None:
         logger.error("❌ Redis connection failed: %s", e)
         return
 
-    logger.info("⏳ Waiting for scan jobs on 'scan_queue'...")
-    while True:
-        try:
-            item = await redis.blpop("scan_queue", timeout=5)
-            if item is None:
-                continue
-            _, scan_id = item
-            logger.info("📥 Picked up scan %s", scan_id)
-            await _handle(scan_id)
-        except asyncio.CancelledError:
-            logger.info("🛑 Worker shutting down...")
-            break
-        except Exception as e:
-            logger.error("❌ Error in worker loop: %s", e)
-            await asyncio.sleep(2)
+    await asyncio.gather(_scan_loop(redis), _hunt_loop(redis))
 
 
 if __name__ == "__main__":

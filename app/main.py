@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import scan, results, evidence, complaint, stripe
+from app.api.routes import scan, results, evidence, complaint, stripe, hunt
 from app.core.config import settings
 
 
@@ -49,6 +49,7 @@ app.include_router(results.router, prefix="/api", tags=["results"])
 app.include_router(evidence.router, prefix="/api", tags=["evidence"])
 app.include_router(complaint.router, prefix="/api", tags=["complaint"])
 app.include_router(stripe.router, prefix="/api", tags=["stripe"])
+app.include_router(hunt.router, prefix="/api", tags=["hunts"])
 
 # Serve the built demo UI at /app (if present) — reuses the API's open port so
 # the demo is reachable without opening another firewall port. Guarded so the

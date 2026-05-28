@@ -98,4 +98,28 @@ class ComplaintResponse(BaseModel):
     scan_id: UUID
 
 
+class HuntStartRequest(BaseModel):
+    """Schema for starting a hunt"""
+    sector: str = Field(..., description="Preset sector key (hotels, rentals, car_rental, tickets, retail)")
+    city: str = Field(default="", description="Target city (uses preset default if empty)")
+    locations: List[str] = Field(default=["CA", "TX"], description="State codes to compare")
+
+
+class HuntStatusResponse(BaseModel):
+    """Schema for hunt status / results polling"""
+    id: str
+    sector: str
+    label: str = ""
+    city: str = ""
+    locations: List[str] = []
+    status: str  # queued|discovering|scouting|scanning|completed|failed
+    phase: str = ""
+    candidates: List[dict] = []
+    scout_results: List[dict] = []
+    scan_ids: List[str] = []
+    results: List[dict] = []
+    created_at: str = ""
+    updated_at: str = ""
+
+
 # Made with Bob

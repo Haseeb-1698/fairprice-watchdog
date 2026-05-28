@@ -100,4 +100,13 @@ async def close_redis_connection():
         _redis_client = None
 
 
+# ── Hunt queue helpers ────────────────────────────────────────────────────────
+
+async def enqueue_hunt(hunt_id: str) -> bool:
+    """Push hunt_id to the hunt_queue for the worker to pick up."""
+    redis = await get_redis_client()
+    await redis.lpush("hunt_queue", hunt_id)  # type: ignore
+    return True
+
+
 # Made with Bob
