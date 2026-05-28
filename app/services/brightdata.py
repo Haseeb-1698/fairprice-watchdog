@@ -199,18 +199,34 @@ def _unlocker_request(url: str, country: str, timeout: int, render_js: bool = Fa
 
 
 def _run_with_hard_deadline(fn, deadline_s: float, *args, **kwargs):
-    """Run `fn` in a worker thread with a hard wall-clock deadline.
-    If the call exceeds the deadline, raise TimeoutError — the worker thread
-    is left to die naturally (we can't kill Python threads cleanly, but the
-    outer pipeline moves on and the daemon thread won't block process exit)."""
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        fut = pool.submit(fn, *args, **kwargs)
+    """Run `fn` in a daemon thread with a hard wall-clock deadline.
+
+    If the call exceeds the deadline, raise TimeoutError immediately — the
+    underlying worker thread is left as a daemon (Python can't kill threads
+    cleanly), so it cannot block the pipeline. Crucial: we deliberately do
+    NOT use `with ThreadPoolExecutor(...) as pool` because that calls
+    pool.shutdown(wait=True) on exit and would block waiting for the hung
+    thread to return.
+    """
+    import threading
+    result: list = []
+    error: list = []
+
+    def _target():
         try:
-            return fut.result(timeout=deadline_s)
-        except concurrent.futures.TimeoutError:
-            fut.cancel()
-            raise TimeoutError(f"fetch exceeded hard deadline of {deadline_s}s")
+            result.append(fn(*args, **kwargs))
+        except BaseException as e:  # noqa: BLE001
+            error.append(e)
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(timeout=deadline_s)
+    if t.is_alive():
+        # Thread still running past the deadline — give up on it, move on.
+        raise TimeoutError(f"fetch exceeded hard deadline of {deadline_s}s")
+    if error:
+        raise error[0]
+    return result[0] if result else ""
 
 
 # Map ISO country codes the Web Unlocker accepts — covers our advertised regions.
