@@ -166,48 +166,142 @@ def _fetch_via_browser(url: str, state: str, timeout: int = 90) -> str:
 
 # ── Page fetch (Crawler) ──────────────────────────────────────────────────────
 
+def _residential_get(url: str, state: str, timeout: int) -> str:
+    """Direct residential-proxy GET. Used for state-level geo on friendly sites."""
+    resp = requests.get(
+        url, proxies=proxy_for_state(state), verify=False, timeout=(15, timeout),
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+    )
+    return resp.text
+
+
+def _unlocker_request(url: str, country: str, timeout: int, render_js: bool = False) -> str:
+    """Web Unlocker /request API — handles Cloudflare/CAPTCHA automatically.
+    Country-level geo only. `render_js=True` runs the page through a real browser
+    on Bright Data's side (slower but works for JS-heavy sites)."""
+    if not settings.BRIGHTDATA_API_KEY or not settings.BRIGHTDATA_ZONE:
+        raise RuntimeError("Web Unlocker not configured")
+    body = {"zone": settings.BRIGHTDATA_ZONE, "url": url, "format": "raw", "country": country}
+    if render_js:
+        body["data_format"] = "html"   # request a fully-rendered HTML page
+        body["render"] = True
+    resp = requests.post(
+        _REQUEST_API,
+        headers={
+            "Authorization": f"Bearer {settings.BRIGHTDATA_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=body,
+        timeout=(15, timeout),
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
+def _run_with_hard_deadline(fn, deadline_s: float, *args, **kwargs):
+    """Run `fn` in a worker thread with a hard wall-clock deadline.
+    If the call exceeds the deadline, raise TimeoutError — the worker thread
+    is left to die naturally (we can't kill Python threads cleanly, but the
+    outer pipeline moves on and the daemon thread won't block process exit)."""
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(fn, *args, **kwargs)
+        try:
+            return fut.result(timeout=deadline_s)
+        except concurrent.futures.TimeoutError:
+            fut.cancel()
+            raise TimeoutError(f"fetch exceeded hard deadline of {deadline_s}s")
+
+
+# Map ISO country codes the Web Unlocker accepts — covers our advertised regions.
+_UNLOCKER_COUNTRY_FOR_GEO = {
+    "US": "us", "GB": "gb", "UK": "gb",
+    "DE": "de", "FR": "fr", "IT": "it", "ES": "es", "NL": "nl", "BE": "be",
+    "PL": "pl", "SE": "se", "FI": "fi", "DK": "dk", "IE": "ie", "PT": "pt",
+    "AT": "at", "CZ": "cz", "GR": "gr", "HU": "hu", "RO": "ro", "BG": "bg",
+    "HR": "hr", "SK": "sk", "SI": "si", "LT": "lt", "LV": "lv", "EE": "ee",
+    "CY": "cy", "MT": "mt", "LU": "lu",
+}
+
+
+def _country_for(geo: str) -> str:
+    """Best-effort ISO country code for a geo code. US states → 'us'."""
+    g = (geo or "").upper()
+    if g in _US_STATES:
+        return "us"
+    return _UNLOCKER_COUNTRY_FOR_GEO.get(g, "us")
+
+
 def fetch_html(url: str, state: str, timeout: int = 60) -> FetchResult:
     """
-    Fetch fully-rendered HTML for `url` as a real user in `state`.
+    Fetch HTML for `url` as a real user in `state`/`country`.
 
-    Live path: route through the Bright Data residential proxy (which fronts the
-    Web Unlocker for anti-bot bypass). Mock path: synthesize state-dependent HTML.
+    Multi-strategy chain — each step has a HARD wall-clock deadline so a hung
+    `requests` call (HTTPS-over-proxy CONNECT issue) can't lock the pipeline:
+
+        1. Residential proxy (geo precise; fast) ─── 35s deadline
+        2. Web Unlocker /request (anti-bot bypass; country-level) ─── 45s deadline
+        3. Web Unlocker /request + render_js (JS-heavy sites) ──────── 60s deadline
+        4. Mock fallback
+
+    For US-state pairs (CA/TX/etc), step 1 is the only one with true state geo;
+    on Cloudflare-walled sites it'll timeout fast and we fall to step 2 which
+    handles the unblocking but at country level.
     """
     if not settings.brightdata_any_live:
         return _mock_fetch(url, state)
-
     if not credits.can_spend():
-        logger.warning("Bright Data credit cap reached (%d) — using mock to protect budget",
-                       settings.BRIGHTDATA_CREDIT_CAP)
+        logger.warning("Bright Data credit cap reached (%d) — using mock", settings.BRIGHTDATA_CREDIT_CAP)
         return _mock_fetch(url, state)
 
-    # Priority for a geo-pinned fetch:
-    #   1. Residential proxy + state geo    — fast, reliable state targeting (default)
-    #   2. Web Unlocker proxy + state geo    — geo + heavy unblock (slower; for blocked sites)
-    #   3. Web Unlocker /request API         — strong unlock, country-level only
-    #   4. Browser API render                — country-level
-    # Residential is first because the Unlocker in proxy mode can stream keepalive
-    # bytes that defeat the read timeout on complex sites (observed hangs).
-    try:
-        if settings.brightdata_live:
-            resp = requests.get(url, proxies=proxy_for_state(state), verify=False, timeout=(15, timeout),
-                                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            html = resp.text
-            source = "residential"
-        elif settings.brightdata_unlocker_proxy_live:
-            html = _fetch_via_unlocker_proxy(url, state, timeout=timeout)
-            source = "unlocker_geo"
-        elif settings.brightdata_unlocker_live:
-            html = _fetch_via_unlocker_api(url, settings.BRIGHTDATA_ZONE, country="us", timeout=timeout)
-            source = "web_unlocker"
-        else:  # browser-only credentials
-            html = _fetch_via_browser(url, state, timeout=timeout)
-            source = "browser_api"
-        credits.record()
-        return FetchResult(url=url, state=state, html=html, status_code=200, live=True, source=source)
-    except Exception as e:
-        logger.warning("Bright Data fetch failed for %s @ %s (%s) — falling back to mock", url, state, e)
-        return _mock_fetch(url, state)
+    country = _country_for(state)
+    state_upper = (state or "").upper()
+    is_us_state = state_upper in _US_STATES
+
+    # Strategy 1: Residential proxy with state geo (only for US-state pairs).
+    if is_us_state and settings.brightdata_live:
+        try:
+            logger.info("[BD] residential-state try: %s @ %s", url, state)
+            html = _run_with_hard_deadline(_residential_get, 35.0, url, state, 30)
+            credits.record()
+            return FetchResult(url=url, state=state, html=html, status_code=200,
+                               live=True, source="residential")
+        except Exception as e:
+            logger.warning("[BD] residential failed (%s) — falling to unlocker", e)
+
+    # Strategy 2: Web Unlocker /request (anti-bot, country-level).
+    if settings.brightdata_unlocker_live:
+        try:
+            logger.info("[BD] unlocker /request try: %s country=%s", url, country)
+            html = _run_with_hard_deadline(_unlocker_request, 45.0, url, country, 40)
+            credits.record()
+            return FetchResult(url=url, state=state, html=html, status_code=200,
+                               live=True, source="web_unlocker")
+        except Exception as e:
+            logger.warning("[BD] unlocker /request failed (%s) — trying with render_js", e)
+
+        # Strategy 3: Web Unlocker /request with JS rendering for stubborn sites.
+        try:
+            logger.info("[BD] unlocker /request + render_js: %s", url)
+            html = _run_with_hard_deadline(_unlocker_request, 60.0, url, country, 55, True)
+            credits.record()
+            return FetchResult(url=url, state=state, html=html, status_code=200,
+                               live=True, source="web_unlocker_js")
+        except Exception as e:
+            logger.warning("[BD] unlocker + render_js failed (%s)", e)
+
+    # Strategy 4: Browser API (rare — only if we have NO residential nor unlocker).
+    if settings.brightdata_browser_live:
+        try:
+            html = _run_with_hard_deadline(_fetch_via_browser, 75.0, url, state, 70)
+            credits.record()
+            return FetchResult(url=url, state=state, html=html, status_code=200,
+                               live=True, source="browser_api")
+        except Exception as e:
+            logger.warning("[BD] browser API failed (%s)", e)
+
+    logger.warning("[BD] all strategies failed for %s @ %s — mock", url, state)
+    return _mock_fetch(url, state)
 
 
 def serp_search(query: str, state: str = "", num: int = 10) -> list[dict]:
