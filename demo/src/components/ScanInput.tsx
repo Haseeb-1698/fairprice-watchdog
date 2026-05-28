@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { ShieldCheck, Search, MapPin, Zap, Globe2 } from "lucide-react";
-import { US_STATES, geoName } from "../lib/coverage";
+import { US_STATES, geoName, COVERAGE } from "../lib/coverage";
 import WorldMap from "./WorldMap";
+
+// Selectable jurisdictions grouped for the dropdown: US states, then UK, then EU 27.
+const UK_COUNTRIES = COVERAGE.filter((c) => c.region === "UK");
+const EU_COUNTRIES = COVERAGE.filter((c) => c.region === "EU");
+const US_COUNTRY = COVERAGE.find((c) => c.code === "US");
 
 export type RunMode = "live" | "demo";
 
@@ -130,16 +135,43 @@ export default function ScanInput({ live, onRun, disabled }: Props) {
                 onChange={(e) => s.set(e.target.value)}
                 className="w-full rounded-xl border border-ink-600 bg-ink-900 px-3 py-3 text-sm text-slate-100 focus:border-gold-500 focus:outline-none"
               >
-                {US_STATES.map((c) => (
-                  <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
-                ))}
+                <optgroup label="🇺🇸 United States">
+                  {US_COUNTRY && (
+                    <option key={US_COUNTRY.code} value={US_COUNTRY.code}>
+                      {US_COUNTRY.name} (whole country)
+                    </option>
+                  )}
+                  {US_STATES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇬🇧 United Kingdom — DMCCA 2024">
+                  {UK_COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇪🇺 European Union — UCPD + DFA">
+                  {EU_COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
           ))}
         </div>
         {touched && !statesValid && (
-          <p role="alert" className="mt-1.5 text-xs text-violation">Pick two different states to compare.</p>
+          <p role="alert" className="mt-1.5 text-xs text-violation">Pick two different locations to compare.</p>
         )}
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          Tip: US-state pairs (e.g. <span className="font-mono text-slate-400">CA vs TX</span>) use Bright Data's state-level
+          residential proxy for true geo targeting. International picks (UK / EU) compare at the country level.
+        </p>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <span className="text-xs text-slate-500">Try:</span>

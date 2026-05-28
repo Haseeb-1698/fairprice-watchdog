@@ -51,20 +51,39 @@ class FetchResult:
 
 # ── Proxy construction ────────────────────────────────────────────────────────
 
+# US state codes — anything else is treated as an ISO country code (UK/EU coverage).
+_US_STATES = {
+    "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+    "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+    "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+    "VA","WA","WV","WI","WY",
+}
+# Geo codes that are themselves countries (the bare-country path: no -state segment).
+_COUNTRY_OVERRIDES = {"US": "us", "GB": "gb", "UK": "gb"}
+
+
 def proxy_username(state: str, zone: Optional[str] = None) -> str:
     """
-    Build a Bright Data proxy username with US state geo-targeting.
+    Build a Bright Data proxy username with geo-targeting.
 
-    Format: brd-customer-<id>-zone-<zone>-country-us-state-<st>
-    The `-state-<st>` segment is what makes the same listing resolve to a
-    different price by location — the heart of the geo-discrimination proof.
+    - If `state` is a US state code (e.g. "CA"), uses country-us + state-<x>.
+    - If `state` is "US" / "GB" / an EU ISO code, uses country-<iso> only.
+
+    The geo segment is what makes the same listing resolve to a different price
+    by location — the heart of the geo-discrimination proof.
     """
     zone = zone or settings.BRIGHTDATA_RESIDENTIAL_ZONE
-    st = (state or "").strip().lower()
-    user = f"brd-customer-{settings.BRIGHTDATA_CUSTOMER_ID}-zone-{zone}-country-us"
-    if st:
-        user += f"-state-{st}"
-    return user
+    code = (state or "").strip().upper()
+
+    if code in _US_STATES:
+        return f"brd-customer-{settings.BRIGHTDATA_CUSTOMER_ID}-zone-{zone}-country-us-state-{code.lower()}"
+    if code in _COUNTRY_OVERRIDES:
+        return f"brd-customer-{settings.BRIGHTDATA_CUSTOMER_ID}-zone-{zone}-country-{_COUNTRY_OVERRIDES[code]}"
+    if code and len(code) == 2:
+        # Treat any 2-letter code as an ISO country (EU countries land here).
+        return f"brd-customer-{settings.BRIGHTDATA_CUSTOMER_ID}-zone-{zone}-country-{code.lower()}"
+    # Fallback — default to US country only.
+    return f"brd-customer-{settings.BRIGHTDATA_CUSTOMER_ID}-zone-{zone}-country-us"
 
 
 def proxy_for_state(state: str) -> dict[str, str]:

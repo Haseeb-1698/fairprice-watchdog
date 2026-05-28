@@ -60,6 +60,20 @@ class Settings(BaseSettings):
     AZURE_KIMI_MODEL: str = "Kimi-K2.5"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
+    # AIMLAPI — OpenAI-compatible gateway to 400+ models (hackathon sponsor)
+    AIMLAPI_KEY: str = ""
+    AIMLAPI_ENDPOINT: str = "https://api.aimlapi.com/v1"
+    AIMLAPI_MODEL: str = "gpt-4o"
+
+    # ── Hackathon sponsor services (optional, all degrade gracefully) ────────
+    # Cognee — knowledge-graph memory for cross-scan agent recall
+    COGNEE_API_KEY: str = ""
+    # Triggerware — query external APIs/SaaS as SQL tables (regulator analytics)
+    TRIGGERWARE_API_KEY: str = ""
+    TRIGGERWARE_ENDPOINT: str = "https://api.triggerware.com"
+    # Speechmatics — speech-to-text for voice scan commands
+    SPEECHMATICS_API_KEY: str = ""
+    SPEECHMATICS_BATCH_URL: str = "https://asr.api.speechmatics.com/v2"
 
     # ── Evidence vault (S3-compatible: MinIO local OR Cloudflare R2 cloud) ────
     # STORAGE_BACKEND=minio uses the MINIO_* vars; =r2 uses the R2_* vars.
