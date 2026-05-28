@@ -1,17 +1,21 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, Github, Info } from "lucide-react";
 import ScanInput, { RunMode } from "./components/ScanInput";
 import PipelineProgress from "./components/PipelineProgress";
 import Results from "./components/Results";
 import Landing from "./components/Landing";
+import HuntPresets from "./components/HuntPresets";
+import HuntProgress from "./components/HuntProgress";
+import HuntResults from "./components/HuntResults";
 import {
   API_BASE, isLive, startScan, pollResults, getEvidence, generateComplaint,
   demoResults, demoEvidence,
+  getHuntPresets, startHunt, pollHuntStatus, demoHuntStatus,
 } from "./api";
-import type { EvidenceSnapshot, ScanResults } from "./types";
+import type { EvidenceSnapshot, HuntPreset, HuntStatus, ScanResults } from "./types";
 
-type Phase = "input" | "running" | "results";
+type Phase = "input" | "running" | "results" | "hunt_running" | "hunt_results";
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>("input");
@@ -24,6 +28,12 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [bundle, setBundle] = useState<{ state: "idle" | "loading" | "done" | "error"; url?: string; kind?: "blob" | "link" }>({ state: "idle" });
 
+  // Hunt state
+  const [huntPresets, setHuntPresets] = useState<HuntPreset[]>([]);
+  const [huntStatus, setHuntStatus] = useState<HuntStatus | null>(null);
+  const [huntSector, setHuntSector] = useState("");
+  const [huntCity, setHuntCity] = useState("");
+
   const abortRef = useRef<AbortController | null>(null);
   const cancelledRef = useRef(false);
   const tickRef = useRef<number | undefined>(undefined);
@@ -31,6 +41,11 @@ export default function App() {
   const scanIdRef = useRef<string | null>(null);
 
   const stopTicker = () => { if (tickRef.current) window.clearInterval(tickRef.current); };
+
+  // Load presets on mount
+  useEffect(() => {
+    getHuntPresets().then(setHuntPresets).catch(() => {});
+  }, []);
 
   function finishDemo(url: string, states: [string, string]) {
     stopTicker();
@@ -40,6 +55,7 @@ export default function App() {
     setPhase("results");
   }
 
+  // ── Standard URL scan ──────────────────────────────────────────────────────
   async function run(url: string, states: [string, string], mode: RunMode) {
     cancelledRef.current = false;
     setMeta({ url, states });
@@ -68,9 +84,78 @@ export default function App() {
     } catch (e) {
       if (cancelledRef.current) return;
       stopTicker();
-      // Resilience: live backend slow/unreachable/timed-out → never hang, show demo data.
       setNotice("Live backend was slow or unreachable — showing representative demo data so the flow stays live.");
       finishDemo(url, states);
+    }
+  }
+
+  // ── Hunt flow ──────────────────────────────────────────────────────────────
+  async function startHuntFlow(sector: string, city: string, locations: [string, string]) {
+    cancelledRef.current = false;
+    setHuntSector(sector);
+    setHuntCity(city);
+    setHuntStatus(null);
+    setNotice(null);
+    setElapsed(0);
+    setPhase("hunt_running");
+
+    const startedAt = Date.now();
+    tickRef.current = window.setInterval(() => setElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000);
+
+    if (!isLive()) {
+      // Demo mode: simulate hunt phases with a timed delay
+      let phase_: string = "discovery";
+      const steps = ["discovery", "scout", "pipeline", "done"];
+      let stepIdx = 0;
+      const advance = () => {
+        if (cancelledRef.current) return;
+        stepIdx++;
+        phase_ = steps[Math.min(stepIdx, steps.length - 1)];
+        setHuntStatus((prev) => prev ? { ...prev, phase: phase_, status: stepIdx < steps.length - 1 ? "scanning" : "completed" } : null);
+        if (stepIdx < steps.length - 1) {
+          demoTimer.current = window.setTimeout(advance, 3500);
+        } else {
+          stopTicker();
+          const finalStatus = demoHuntStatus(sector, city, Array.from(locations));
+          setHuntStatus(finalStatus);
+          setPhase("hunt_results");
+        }
+      };
+      // Init with queued state
+      setHuntStatus({ id: `demo-${sector}`, sector, label: sector, city, locations: Array.from(locations),
+        status: "discovering", phase: "discovery", candidates: [], scout_results: [],
+        scan_ids: [], results: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      demoTimer.current = window.setTimeout(advance, 3000);
+      return;
+    }
+
+    const ac = new AbortController();
+    abortRef.current = ac;
+    try {
+      const huntId = await startHunt(sector, city, Array.from(locations));
+      // Poll for progressive updates
+      const finalStatus = await pollHuntStatus(huntId, {
+        signal: ac.signal,
+        onTick: (_s, st) => {
+          setStatus(st);
+          // Fetch partial state for progressive rendering
+          fetch(`${API_BASE}/api/hunts/${huntId}`)
+            .then((r) => r.json())
+            .then((data) => { if (!cancelledRef.current) setHuntStatus(data); })
+            .catch(() => {});
+        },
+      });
+      if (cancelledRef.current) return;
+      stopTicker();
+      setHuntStatus(finalStatus);
+      setPhase("hunt_results");
+    } catch (e) {
+      if (cancelledRef.current) return;
+      stopTicker();
+      setNotice("Hunt backend was slow or unreachable — showing demo results.");
+      const fallback = demoHuntStatus(sector, city, Array.from(locations));
+      setHuntStatus(fallback);
+      setPhase("hunt_results");
     }
   }
 
@@ -87,11 +172,11 @@ export default function App() {
     cancelledRef.current = false;
     setPhase("input");
     setResults(null);
+    setHuntStatus(null);
   }
 
   async function onGenerateBundle() {
     if (isDemo || !scanIdRef.current || !isLive()) {
-      // Demo: synthesize a downloadable JSON bundle client-side.
       const blob = new Blob(
         [JSON.stringify({ generated: new Date().toISOString(), demo: true, results, evidence }, null, 2)],
         { type: "application/json" }
@@ -139,18 +224,42 @@ export default function App() {
       <AnimatePresence mode="wait">
         {phase === "input" && (
           <motion.div key="input" exit={{ opacity: 0, y: -10 }}>
+            {/* HERO: URL + location picker + world map — at the top */}
             <ScanInput live={isLive()} onRun={run} />
+            {/* Sector hunt cards — below the hero */}
+            <HuntPresets presets={huntPresets} onStartHunt={startHuntFlow} />
+            {/* Regulatory "Why now" — at the bottom */}
             <Landing />
           </motion.div>
         )}
+
         {phase === "running" && (
           <motion.div key="running" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <PipelineProgress elapsedSec={elapsed} statusLabel={status} url={meta.url} states={meta.states} onCancel={cancel} />
           </motion.div>
         )}
+
         {phase === "results" && results && (
           <motion.div key="results" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <Results results={results} evidence={evidence} isDemo={isDemo} onReset={reset} onGenerateBundle={onGenerateBundle} bundle={bundle} />
+          </motion.div>
+        )}
+
+        {phase === "hunt_running" && (
+          <motion.div key="hunt_running" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <HuntProgress
+              huntStatus={huntStatus}
+              elapsedSec={elapsed}
+              sector={huntSector}
+              city={huntCity}
+              onCancel={cancel}
+            />
+          </motion.div>
+        )}
+
+        {phase === "hunt_results" && huntStatus && (
+          <motion.div key="hunt_results" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <HuntResults huntStatus={huntStatus} onReset={reset} />
           </motion.div>
         )}
       </AnimatePresence>

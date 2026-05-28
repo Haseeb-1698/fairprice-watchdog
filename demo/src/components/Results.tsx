@@ -217,9 +217,16 @@ function FeeBreakdown({ listing }: { listing: Listing }) {
               <span className="font-mono tabular text-sm text-slate-100">{money(f.fee_amount)}</span>
             </div>
             {f.ftc_clause && (
-              <p className="mt-1 flex items-start gap-1 text-[11px] leading-snug text-slate-500">
+              <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-snug text-slate-500">
                 <Scale className="mt-0.5 h-3 w-3 shrink-0 text-gold-600" />
-                {f.ftc_clause}
+                <span>
+                  <span className="font-mono font-700 text-gold-500">
+                    {(f.ftc_clause || "").split(" ").slice(0, 3).join(" ")}
+                  </span>{" "}
+                  <span className="text-slate-500">
+                    {(f.ftc_clause || "").split(" ").slice(3).join(" ")}
+                  </span>
+                </span>
               </p>
             )}
           </li>
