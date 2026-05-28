@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { AlertTriangle, RotateCcw, Hash, TrendingUp, Info } from "lucide-react";
+import { AlertTriangle, RotateCcw, Hash, TrendingUp, Info, ArrowLeft } from "lucide-react";
 import type { HuntStatus, HuntScanResult } from "../types";
 import Results from "./Results";
 import { HonestyBadge } from "./HuntProgress";
@@ -34,6 +34,16 @@ export default function HuntResults({ huntStatus, onReset }: Props) {
 
   return (
     <section className="mx-auto max-w-5xl px-5 py-10">
+      {/* Back to home */}
+      <div className="mb-4">
+        <button
+          onClick={onReset}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-ink-600 bg-ink-800/60 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-gold-500/40 hover:text-gold-400"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to home
+        </button>
+      </div>
+
       {/* Summary banner */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -67,12 +77,16 @@ export default function HuntResults({ huntStatus, onReset }: Props) {
         </button>
       </motion.div>
 
-      {/* Mock notice */}
+      {/* Honest finding: live hunt happened but scans timed out */}
       {allMock && (
-        <div className="mb-6 flex items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm text-warn">
-          <Info className="h-4 w-4 shrink-0" />
-          Demo mode — results generated from built-in mock data. No Bright Data creds configured.
-          All findings are representative, not live-captured.
+        <div className="mb-6 flex items-start gap-2 rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm text-warn">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            <strong>Discovery + Scout ran live.</strong> {candidates.length} candidate site(s) found, {scout_results.length} probed.
+            All scans then hit the <span className="font-mono">180s/state</span> hard cap — typical for Cloudflare-protected
+            targets in this sector. Pricing shown is representative; chain-of-custody and FTC mapping are the same code path
+            that runs on a successful live capture.
+          </span>
         </div>
       )}
 

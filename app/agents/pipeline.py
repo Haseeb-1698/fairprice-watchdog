@@ -32,6 +32,7 @@ from app.models.fee import Fee
 from app.models.listing import Listing
 from app.models.scan import Scan
 from app.services import storage
+from app.services.events import sync_emit, clear as clear_events
 from app.services.queue import update_scan_status
 
 logger = logging.getLogger(__name__)
@@ -43,14 +44,54 @@ PER_STATE_TIMEOUT = int(os.environ.get("SCAN_PER_STATE_TIMEOUT", "180"))
 # ── Per-state work (blocking; run in a thread) ────────────────────────────────
 
 def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
-    """Crawl + walk + diff + snapshot a listing for one US state."""
+    """Crawl + walk + diff + snapshot a listing for one US state.
+    Emits per-step events so the UI can render an agent thinking feed."""
+    sync_emit(scan_id, "Crawler", "started", f"Loading listing from {state}", state=state, url=url)
     crawl = CrawlerAgent().load(url, state)
+    sync_emit(
+        scan_id, "Crawler", "result",
+        f"Advertised price from {state}: ${crawl['advertised_price']:.2f}",
+        state=state, advertised_price=crawl["advertised_price"],
+        source=crawl.get("source"), live=crawl.get("live"),
+    )
+
+    sync_emit(scan_id, "Journey Simulator", "started",
+              f"Walking the checkout funnel from {state} (stops before payment)", state=state)
     journey = JourneyAgent().walk(url, state)
+    sync_emit(
+        scan_id, "Journey Simulator", "result",
+        f"Final total from {state}: ${journey['final_price']:.2f} · {len(journey['fees'])} fee line-item(s)",
+        state=state, final_price=journey["final_price"],
+        fee_count=len(journey["fees"]),
+        source=journey.get("source"), live=journey.get("live"),
+    )
+
+    sync_emit(scan_id, "Diff", "thinking", f"Comparing advertised vs final for {state}", state=state)
     diff = DiffAgent().analyze(crawl["advertised_price"], journey["final_price"], journey["fees"])
+    sync_emit(
+        scan_id, "Diff", "result",
+        f"{state}: ${diff['hidden_total']:.2f} hidden in checkout across "
+        f"{len(diff['fees'])} fee(s); "
+        f"{sum(1 for f in diff['fees'] if f.is_junk_fee)} likely junk",
+        state=state, hidden_total=diff["hidden_total"],
+    )
+
+    sync_emit(scan_id, "Law-Mapper", "thinking", f"Mapping fees to FTC clauses for {state}", state=state)
     # Law-Mapper sets the authoritative FTC clause (and can upgrade junk status).
     fees = LawMapperAgent().enrich(diff["fees"])
+    sync_emit(
+        scan_id, "Law-Mapper", "result",
+        f"{state}: {len(fees)} fee(s) classified under 16 CFR Part 464",
+        state=state, clauses=list({(f.ftc_clause or "").split(" ", 1)[0] for f in fees if f.ftc_clause})[:4],
+    )
 
+    sync_emit(scan_id, "Evidence Vault", "action", f"Sealing HTML snapshot for {state} (SHA-256)", state=state)
     snap = storage.store_snapshot(scan_id, state, journey["html"])
+    sync_emit(
+        scan_id, "Evidence Vault", "done",
+        f"{state} snapshot sealed · sha256={snap.sha256[:12]}…",
+        state=state, sha256=snap.sha256, storage_path=snap.storage_path,
+    )
 
     return GeoListing(
         state=state,
@@ -72,6 +113,14 @@ async def run_scan(scan_id: str, url: str, states: list[str] | None = None) -> S
     """Run a full two-geo scan and persist results. Returns the ScanBrief."""
     states = states or settings.default_states
     logger.info("▶ Scan %s starting: %s across %s", scan_id, url, states)
+    # Reset event stream so a re-run shows a clean feed.
+    try:
+        await clear_events(scan_id)
+    except Exception:
+        pass
+    sync_emit(scan_id, "Pipeline", "queued",
+              f"Scan accepted · {url} · comparing {', '.join(states)}",
+              url=url, states=states)
     await update_scan_status(scan_id, "processing")
 
     try:
@@ -89,9 +138,13 @@ async def run_scan(scan_id: str, url: str, states: list[str] | None = None) -> S
 
         await _persist(brief)
         await update_scan_status(scan_id, "completed")
+        sync_emit(scan_id, "Filing", "done",
+                  f"Scan complete · {brief.summary}",
+                  summary=brief.summary)
         logger.info("✔ Scan %s complete — %s", scan_id, brief.summary)
         return brief
     except Exception as e:
+        sync_emit(scan_id, "Pipeline", "error", f"Scan failed: {e}")
         logger.exception("✘ Scan %s failed: %s", scan_id, e)
         await update_scan_status(scan_id, "failed")
         await _mark_scan(scan_id, "failed")
@@ -117,6 +170,9 @@ async def _execute(scan_id: str, url: str, states: list[str]) -> list[GeoListing
                 asyncio.to_thread(scan_state, scan_id, url, st), timeout=PER_STATE_TIMEOUT
             )
         except asyncio.TimeoutError:
+            sync_emit(scan_id, "Pipeline", "warn",
+                      f"{st} hit the {PER_STATE_TIMEOUT}s hard cap — recording empty listing (target likely Cloudflare-protected)",
+                      state=st, reason="per_state_timeout", limit_seconds=PER_STATE_TIMEOUT)
             logger.error("State %s timed out after %ss — recording empty listing", st, PER_STATE_TIMEOUT)
             return GeoListing(state=st, advertised_price=0.0, final_price=0.0, source="timeout")
 

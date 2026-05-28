@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle, ShieldCheck, FileDown, Hash, FileWarning,
-  TrendingUp, Scale, RotateCcw, Loader2, ExternalLink,
+  TrendingUp, Scale, RotateCcw, Loader2, ExternalLink, ArrowLeft,
 } from "lucide-react";
 import type { EvidenceSnapshot, Listing, ScanResults } from "../types";
 import { stateName } from "../lib/states";
@@ -68,6 +68,16 @@ export default function Results({ results, evidence, isDemo, onReset, onGenerate
 
   return (
     <section className="mx-auto max-w-5xl px-5 py-10">
+      {/* Back to new-scan */}
+      <div className="mb-4">
+        <button
+          onClick={onReset}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-ink-600 bg-ink-800/60 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-gold-500/40 hover:text-gold-400"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to new scan
+        </button>
+      </div>
+
       {/* Verdict banner */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}

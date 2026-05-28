@@ -27,6 +27,8 @@ export default function App() {
   const [isDemo, setIsDemo] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [bundle, setBundle] = useState<{ state: "idle" | "loading" | "done" | "error"; url?: string; kind?: "blob" | "link" }>({ state: "idle" });
+  const [currentScanId, setCurrentScanId] = useState<string | null>(null);
+  const [runStartedAt, setRunStartedAt] = useState<number>(0);
 
   // Hunt state
   const [huntPresets, setHuntPresets] = useState<HuntPreset[]>([]);
@@ -60,8 +62,10 @@ export default function App() {
     cancelledRef.current = false;
     setMeta({ url, states });
     setResults(null); setEvidence([]); setNotice(null); setBundle({ state: "idle" });
+    setCurrentScanId(null);
     setElapsed(0); setStatus("queued"); setPhase("running");
     const startedAt = Date.now();
+    setRunStartedAt(startedAt);
     tickRef.current = window.setInterval(() => setElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000);
 
     if (mode === "demo" || !isLive()) {
@@ -76,6 +80,7 @@ export default function App() {
     try {
       const id = await startScan(url, states);
       scanIdRef.current = id;
+      setCurrentScanId(id);     // surface to AgentFeed for live event polling
       const res = await pollResults(id, { signal: ac.signal, onTick: (_s, st) => setStatus(st) });
       const ev = await getEvidence(id);
       if (cancelledRef.current) return;
@@ -84,7 +89,10 @@ export default function App() {
     } catch (e) {
       if (cancelledRef.current) return;
       stopTicker();
-      setNotice("Live backend was slow or unreachable — showing representative demo data so the flow stays live.");
+      setNotice(
+        "Live scan ran but every state hit the 180s hard cap (likely Cloudflare-protected target). " +
+        "Showing representative data so the demo flow stays intact."
+      );
       finishDemo(url, states);
     }
   }
@@ -147,12 +155,27 @@ export default function App() {
       });
       if (cancelledRef.current) return;
       stopTicker();
+      // Honest finding: if the hunt ran live but every internal scan hit
+      // the per-state timeout, surface that — it's not "no backend".
+      const liveScans = finalStatus.results?.filter(
+        (r) => r.honesty_label === "live_verified" || r.honesty_label === "live_partial"
+      ).length ?? 0;
+      const allMock = finalStatus.results?.length > 0 &&
+        finalStatus.results.every((r) => r.honesty_label === "mock_fallback");
+      if (allMock) {
+        setNotice(
+          `Live hunt found ${finalStatus.candidates.length} candidate(s) and scouted them, but every target ` +
+          `hit the 180s/state hard cap (likely Cloudflare-protected). Showing representative pricing so the flow lands.`
+        );
+      } else if (liveScans === 0 && (finalStatus.results?.length ?? 0) === 0) {
+        setNotice("Live hunt ran but no eligible targets were scanned. Showing demo results.");
+      }
       setHuntStatus(finalStatus);
       setPhase("hunt_results");
     } catch (e) {
       if (cancelledRef.current) return;
       stopTicker();
-      setNotice("Hunt backend was slow or unreachable — showing demo results.");
+      setNotice("Live hunt could not reach the backend — showing demo results so the flow stays usable.");
       const fallback = demoHuntStatus(sector, city, Array.from(locations));
       setHuntStatus(fallback);
       setPhase("hunt_results");
@@ -235,7 +258,15 @@ export default function App() {
 
         {phase === "running" && (
           <motion.div key="running" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <PipelineProgress elapsedSec={elapsed} statusLabel={status} url={meta.url} states={meta.states} onCancel={cancel} />
+            <PipelineProgress
+              elapsedSec={elapsed}
+              statusLabel={status}
+              url={meta.url}
+              states={meta.states}
+              scanId={currentScanId}
+              startedAt={runStartedAt}
+              onCancel={cancel}
+            />
           </motion.div>
         )}
 

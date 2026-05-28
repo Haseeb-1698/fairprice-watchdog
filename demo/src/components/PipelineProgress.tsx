@@ -1,15 +1,18 @@
 import { motion } from "framer-motion";
 import {
   Globe, Footprints, GitCompareArrows, Scale, Radar, FileCheck2,
-  Check, Loader2, X, Clock,
+  Check, Loader2, X, Clock, ArrowLeft,
 } from "lucide-react";
 import { stateName } from "../lib/states";
+import AgentFeed from "./AgentFeed";
 
 interface Props {
   elapsedSec: number;
   statusLabel: string;
   url: string;
   states: [string, string];
+  scanId?: string | null;
+  startedAt?: number;
   onCancel: () => void;
 }
 
@@ -28,12 +31,22 @@ function fmt(s: number) {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
-export default function PipelineProgress({ elapsedSec, statusLabel, url, states, onCancel }: Props) {
+export default function PipelineProgress({ elapsedSec, statusLabel, url, states, scanId, startedAt, onCancel }: Props) {
   // Advance stages by elapsed time; the last unfinished stage stays "active".
   const lastDone = AGENTS.reduce((acc, a, i) => (elapsedSec >= AGENTS[Math.min(i + 1, AGENTS.length - 1)].at && i < AGENTS.length - 1 ? i : acc), -1);
 
   return (
-    <section className="mx-auto max-w-3xl px-5 py-10">
+    <section className="mx-auto max-w-6xl px-5 py-10">
+      <div className="mb-4 flex items-center justify-between">
+        <button
+          onClick={onCancel}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-ink-600 bg-ink-800/60 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-gold-500/40 hover:text-gold-400"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to new scan
+        </button>
+        <span className="font-mono text-[11px] text-slate-500">Press Esc to cancel</span>
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
       <div className="rounded-2xl border border-ink-600 bg-ink-800/80 p-6 shadow-panel backdrop-blur">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -109,6 +122,10 @@ export default function PipelineProgress({ elapsedSec, statusLabel, url, states,
         <p className="mt-2 text-center text-xs text-slate-500" aria-live="polite">
           {statusLabel} · capturing pricing from each state (stops before any payment is submitted)
         </p>
+      </div>
+
+      {/* Studio-style live thinking feed (right column on lg+, below on mobile) */}
+      <AgentFeed scanId={scanId ?? null} active={true} startedAt={startedAt ?? Date.now()} />
       </div>
     </section>
   );
