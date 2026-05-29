@@ -298,20 +298,20 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
             pass
 
     # Strategy 1: Web Unlocker /request — proven reliable (anti-bot bypass, country-level).
-    # We try this FIRST because it has no proxy-CONNECT-hang issue (it's a normal HTTPS
-    # POST to api.brightdata.com), and Bright Data handles Cloudflare on its side.
+    # Called directly (no thread wrapper) because `requests` to api.brightdata.com is
+    # a clean HTTPS POST with its own connect+read timeout that fires reliably.
     if settings.brightdata_unlocker_live:
-        _ev("thinking", f"Web Unlocker /request · country={country} · 45s deadline")
+        _ev("thinking", f"Web Unlocker /request · country={country} · 45s timeout")
         logger.warning("[BD] unlocker /request try: %s country=%s", url, country)
         try:
-            html = _run_with_hard_deadline(_unlocker_request, 45.0, url, country, 40)
+            html = _unlocker_request(url, country, timeout=45)
             credits.record()
             _ev("result", f"Web Unlocker succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker")
             return FetchResult(url=url, state=state, html=html, status_code=200,
                                live=True, source="web_unlocker")
         except Exception as e:
             logger.warning("[BD] unlocker /request failed (%s) — trying with render_js", e)
-            _ev("warn", f"Unlocker plain failed: {str(e)[:120]} → trying with JS render", strategy="web_unlocker")
+            _ev("warn", f"Unlocker plain failed: {str(e)[:120]} -> trying with JS render", strategy="web_unlocker")
 
     # Strategy 2: Residential proxy with state geo (US-state pairs only).
     # Reserved for cases where state-level geo matters more than anti-bot bypass.
@@ -332,9 +332,9 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
 
     # Strategy 3: Web Unlocker /request with JS rendering for stubborn sites.
     if settings.brightdata_unlocker_live:
-        _ev("thinking", f"Web Unlocker + render_js · country={country} · 60s deadline")
+        _ev("thinking", f"Web Unlocker + render_js · country={country} · 60s timeout")
         try:
-            html = _run_with_hard_deadline(_unlocker_request, 60.0, url, country, 55, True)
+            html = _unlocker_request(url, country, timeout=60, render_js=True)
             credits.record()
             _ev("result", f"Unlocker+JS succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker_js")
             return FetchResult(url=url, state=state, html=html, status_code=200,
