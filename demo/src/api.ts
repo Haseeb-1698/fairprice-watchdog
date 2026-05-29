@@ -4,8 +4,9 @@ import { mockEvidence, mockListing, mockResults, toGeo } from "./lib/states";
 export const API_BASE: string = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 export const isLive = () => API_BASE.length > 0;
 
-// Hard ceiling so the UI can NEVER hang forever (backend caps a scan at ~180s/state).
-const MAX_POLL_MS = 210_000;
+// Hard ceiling so the UI can NEVER hang forever. Backend caps each state at
+// 300s; 2 states run in parallel; UI ceiling = 300s + 60s buffer = 360s.
+const MAX_POLL_MS = 360_000;
 const POLL_INTERVAL_MS = 2500;
 const REQ_TIMEOUT_MS = 12_000;
 
@@ -139,7 +140,7 @@ export async function startHunt(sector: string, city: string, locations: string[
   return data.hunt_id;
 }
 
-const MAX_HUNT_POLL_MS = 360_000; // hunts take longer than single scans
+const MAX_HUNT_POLL_MS = 720_000; // hunts can have multiple scans queued (5x300s + scout + serp)
 
 export async function pollHuntStatus(huntId: string, h: PollHandle = {}): Promise<HuntStatus> {
   const started = Date.now();

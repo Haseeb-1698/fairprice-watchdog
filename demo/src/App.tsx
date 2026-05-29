@@ -89,9 +89,32 @@ export default function App() {
     } catch (e) {
       if (cancelledRef.current) return;
       stopTicker();
+      // Pull the agent event stream to explain what *actually* went wrong —
+      // the user sees a real reason (e.g. "all live strategies exhausted")
+      // instead of a silent fallback to demo.
+      const id = scanIdRef.current;
+      let reason = e instanceof Error ? e.message : "Live scan did not return";
+      if (id && isLive()) {
+        try {
+          const r = await fetch(`${API_BASE}/api/scan/${id}/events?since=0`, {
+            signal: AbortSignal.timeout(6000),
+          });
+          const data = await r.json();
+          const warns = (data.events || []).filter(
+            (ev: any) => ev.level === "warn" || ev.level === "error"
+          );
+          if (warns.length > 0) {
+            const last = warns[warns.length - 1];
+            reason = `${last.agent}: ${last.message}`;
+          }
+        } catch {
+          /* ignore — keep generic reason */
+        }
+      }
       setNotice(
-        "Live scan ran but every state hit the 180s hard cap (likely Cloudflare-protected target). " +
-        "Showing representative data so the demo flow stays intact."
+        `Live scan did not return a real capture · ${reason} · ` +
+        "Showing representative data so you can see the rest of the flow (chain-of-custody " +
+        "and FTC mapping are the same code path as a successful live run)."
       );
       finishDemo(url, states);
     }

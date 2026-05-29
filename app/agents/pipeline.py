@@ -38,7 +38,10 @@ from app.services.queue import update_scan_status
 logger = logging.getLogger(__name__)
 
 # Hard wall-clock cap per state (crawl + checkout walk + diff + snapshot).
-PER_STATE_TIMEOUT = int(os.environ.get("SCAN_PER_STATE_TIMEOUT", "180"))
+# 300s = 5 minutes per state — generous enough to cover the multi-strategy
+# fetch chain (residential 35s + unlocker 45s + unlocker+JS 60s) plus 3 LLM
+# extraction passes (~30s each) plus storage. Override via env if needed.
+PER_STATE_TIMEOUT = int(os.environ.get("SCAN_PER_STATE_TIMEOUT", "300"))
 
 
 # ── Per-state work (blocking; run in a thread) ────────────────────────────────
