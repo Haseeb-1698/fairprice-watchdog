@@ -12,6 +12,37 @@ from app.models.scan import Scan
 from app.schemas import ScanCreate, ScanResponse
 from app.services.queue import enqueue_scan
 
+
+# Map the frontend's lowercase names ("california"/"germany"/"gb") to the
+# canonical codes the pipeline + Bright Data proxy username use ("CA"/"DE"/"GB").
+_NAME_TO_CODE = {
+    # US states
+    "california": "CA", "texas": "TX", "new york": "NY", "florida": "FL",
+    "washington": "WA", "georgia": "GA", "illinois": "IL", "arizona": "AZ",
+    "nevada": "NV", "colorado": "CO",
+    # Countries
+    "united states": "US",
+    "united kingdom": "GB", "uk": "GB", "great britain": "GB", "britain": "GB",
+    "germany": "DE", "france": "FR", "italy": "IT", "spain": "ES",
+    "netherlands": "NL", "belgium": "BE", "poland": "PL", "sweden": "SE",
+    "finland": "FI", "denmark": "DK", "ireland": "IE", "portugal": "PT",
+    "austria": "AT", "czechia": "CZ", "greece": "GR", "hungary": "HU",
+    "romania": "RO", "bulgaria": "BG", "croatia": "HR", "slovakia": "SK",
+    "slovenia": "SI", "lithuania": "LT", "latvia": "LV", "estonia": "EE",
+    "cyprus": "CY", "malta": "MT", "luxembourg": "LU",
+}
+
+
+def _normalize_geo(g: str) -> str:
+    """Accept a name or 2-letter code from any source; return canonical code."""
+    s = (g or "").strip()
+    if not s:
+        return ""
+    # 2-letter code as-is
+    if len(s) == 2 and s.isalpha():
+        return s.upper()
+    return _NAME_TO_CODE.get(s.lower(), s.upper())
+
 router = APIRouter()
 
 
@@ -43,7 +74,12 @@ async def create_scan(
     # "scan has no URL / not found — skipping".
     await db.commit()
     await db.refresh(new_scan)
-    await enqueue_scan(str(new_scan.id))
+
+    # Normalize the geos the frontend sent into canonical codes (CA, TX, GB,
+    # DE, etc.) and pass them to the worker — without this the worker reads an
+    # empty 'states' field from Redis and falls back to DEFAULT_SCAN_STATES.
+    normalized = [c for c in (_normalize_geo(g) for g in (scan_data.geos or [])) if c]
+    await enqueue_scan(str(new_scan.id), states=normalized or None)
     
     # Return response with geos from request
     return ScanResponse(

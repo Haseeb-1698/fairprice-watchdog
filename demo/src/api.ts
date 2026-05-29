@@ -23,9 +23,11 @@ async function req(path: string, init?: RequestInit) {
 }
 
 export async function startScan(url: string, states: string[]): Promise<string> {
+  // Send canonical codes (CA/TX/GB/DE/...) — the backend normalizes either form,
+  // but uppercase codes round-trip cleanly through the proxy username builder.
   const res = await req("/api/scan", {
     method: "POST",
-    body: JSON.stringify({ url, geos: states.map(toGeo) }),
+    body: JSON.stringify({ url, geos: states.map((s) => s.toUpperCase()) }),
   });
   const data = await res.json();
   return data.id ?? data.scan_id;
