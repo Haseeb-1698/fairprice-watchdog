@@ -297,21 +297,9 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
         except Exception:
             pass
 
-    # Strategy 1: Residential proxy with state geo (only for US-state pairs).
-    if is_us_state and settings.brightdata_live:
-        _ev("thinking", f"Residential proxy + state geo · {state} · 30s deadline")
-        logger.warning("[BD] residential-state try: %s @ %s", url, state)
-        try:
-            html = _run_with_hard_deadline(_residential_get, 30.0, url, state, 22)
-            credits.record()
-            _ev("result", f"Residential succeeded · {len(html)} bytes", bytes=len(html), strategy="residential")
-            return FetchResult(url=url, state=state, html=html, status_code=200,
-                               live=True, source="residential")
-        except Exception as e:
-            logger.warning("[BD] residential failed (%s) — falling to unlocker", e)
-            _ev("warn", f"Residential timed out/failed: {str(e)[:120]} → falling to Web Unlocker", strategy="residential")
-
-    # Strategy 2: Web Unlocker /request (anti-bot, country-level).
+    # Strategy 1: Web Unlocker /request — proven reliable (anti-bot bypass, country-level).
+    # We try this FIRST because it has no proxy-CONNECT-hang issue (it's a normal HTTPS
+    # POST to api.brightdata.com), and Bright Data handles Cloudflare on its side.
     if settings.brightdata_unlocker_live:
         _ev("thinking", f"Web Unlocker /request · country={country} · 45s deadline")
         logger.warning("[BD] unlocker /request try: %s country=%s", url, country)
@@ -323,9 +311,27 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
                                live=True, source="web_unlocker")
         except Exception as e:
             logger.warning("[BD] unlocker /request failed (%s) — trying with render_js", e)
-            _ev("warn", f"Unlocker plain failed → trying with JS render", strategy="web_unlocker")
+            _ev("warn", f"Unlocker plain failed: {str(e)[:120]} → trying with JS render", strategy="web_unlocker")
 
-        # Strategy 3: Web Unlocker /request with JS rendering for stubborn sites.
+    # Strategy 2: Residential proxy with state geo (US-state pairs only).
+    # Reserved for cases where state-level geo matters more than anti-bot bypass.
+    # Note: residential through proxy CONNECT can hang on Cloudflare-walled sites
+    # past the deadline (Python threading limitation with C-level socket blocks).
+    if is_us_state and settings.brightdata_live:
+        _ev("thinking", f"Residential proxy + state geo · {state} · 30s deadline (fallback)")
+        logger.warning("[BD] residential-state try: %s @ %s", url, state)
+        try:
+            html = _run_with_hard_deadline(_residential_get, 30.0, url, state, 22)
+            credits.record()
+            _ev("result", f"Residential succeeded · {len(html)} bytes", bytes=len(html), strategy="residential")
+            return FetchResult(url=url, state=state, html=html, status_code=200,
+                               live=True, source="residential")
+        except Exception as e:
+            logger.warning("[BD] residential failed (%s)", e)
+            _ev("warn", f"Residential timed out/failed: {str(e)[:120]}", strategy="residential")
+
+    # Strategy 3: Web Unlocker /request with JS rendering for stubborn sites.
+    if settings.brightdata_unlocker_live:
         _ev("thinking", f"Web Unlocker + render_js · country={country} · 60s deadline")
         try:
             html = _run_with_hard_deadline(_unlocker_request, 60.0, url, country, 55, True)
