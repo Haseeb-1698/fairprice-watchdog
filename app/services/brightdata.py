@@ -248,7 +248,7 @@ def _country_for(geo: str) -> str:
     return _UNLOCKER_COUNTRY_FOR_GEO.get(g, "us")
 
 
-def fetch_html(url: str, state: str, timeout: int = 60) -> FetchResult:
+def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = None) -> FetchResult:
     """
     Fetch HTML for `url` as a real user in `state`/`country`.
 
@@ -274,49 +274,71 @@ def fetch_html(url: str, state: str, timeout: int = 60) -> FetchResult:
     state_upper = (state or "").upper()
     is_us_state = state_upper in _US_STATES
 
+    # Lazy import to avoid a hard dep cycle if events module is missing.
+    def _ev(level: str, message: str, **data):
+        if not scan_id:
+            return
+        try:
+            from app.services.events import sync_emit
+            sync_emit(scan_id, "Bright Data", level, message, state=state, **data)
+        except Exception:
+            pass
+
     # Strategy 1: Residential proxy with state geo (only for US-state pairs).
     if is_us_state and settings.brightdata_live:
+        _ev("thinking", f"Residential proxy + state geo · {state} · 35s deadline")
+        logger.warning("[BD] residential-state try: %s @ %s", url, state)
         try:
-            logger.info("[BD] residential-state try: %s @ %s", url, state)
             html = _run_with_hard_deadline(_residential_get, 35.0, url, state, 30)
             credits.record()
+            _ev("result", f"Residential succeeded · {len(html)} bytes", bytes=len(html), strategy="residential")
             return FetchResult(url=url, state=state, html=html, status_code=200,
                                live=True, source="residential")
         except Exception as e:
             logger.warning("[BD] residential failed (%s) — falling to unlocker", e)
+            _ev("warn", f"Residential timed out/failed: {str(e)[:120]} → falling to Web Unlocker", strategy="residential")
 
     # Strategy 2: Web Unlocker /request (anti-bot, country-level).
     if settings.brightdata_unlocker_live:
+        _ev("thinking", f"Web Unlocker /request · country={country} · 45s deadline")
+        logger.warning("[BD] unlocker /request try: %s country=%s", url, country)
         try:
-            logger.info("[BD] unlocker /request try: %s country=%s", url, country)
             html = _run_with_hard_deadline(_unlocker_request, 45.0, url, country, 40)
             credits.record()
+            _ev("result", f"Web Unlocker succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker")
             return FetchResult(url=url, state=state, html=html, status_code=200,
                                live=True, source="web_unlocker")
         except Exception as e:
             logger.warning("[BD] unlocker /request failed (%s) — trying with render_js", e)
+            _ev("warn", f"Unlocker plain failed → trying with JS render", strategy="web_unlocker")
 
         # Strategy 3: Web Unlocker /request with JS rendering for stubborn sites.
+        _ev("thinking", f"Web Unlocker + render_js · country={country} · 60s deadline")
         try:
-            logger.info("[BD] unlocker /request + render_js: %s", url)
             html = _run_with_hard_deadline(_unlocker_request, 60.0, url, country, 55, True)
             credits.record()
+            _ev("result", f"Unlocker+JS succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker_js")
             return FetchResult(url=url, state=state, html=html, status_code=200,
                                live=True, source="web_unlocker_js")
         except Exception as e:
             logger.warning("[BD] unlocker + render_js failed (%s)", e)
+            _ev("warn", f"Unlocker+JS failed: {str(e)[:120]}", strategy="web_unlocker_js")
 
-    # Strategy 4: Browser API (rare — only if we have NO residential nor unlocker).
+    # Strategy 4: Browser API (last resort).
     if settings.brightdata_browser_live:
+        _ev("thinking", f"Browser API (Playwright over CDP) · 75s deadline")
         try:
             html = _run_with_hard_deadline(_fetch_via_browser, 75.0, url, state, 70)
             credits.record()
+            _ev("result", f"Browser API succeeded · {len(html)} bytes", bytes=len(html), strategy="browser_api")
             return FetchResult(url=url, state=state, html=html, status_code=200,
                                live=True, source="browser_api")
         except Exception as e:
             logger.warning("[BD] browser API failed (%s)", e)
+            _ev("warn", f"Browser API failed: {str(e)[:120]}", strategy="browser_api")
 
     logger.warning("[BD] all strategies failed for %s @ %s — mock", url, state)
+    _ev("error", "All live strategies exhausted → falling to representative mock data", strategy="mock")
     return _mock_fetch(url, state)
 
 

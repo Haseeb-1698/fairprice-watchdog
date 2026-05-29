@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 class CrawlerAgent:
     name = "Crawler"
 
-    def load(self, url: str, state: str) -> dict:
+    def load(self, url: str, state: str, scan_id: str | None = None) -> dict:
         """
         Returns:
             {"state", "advertised_price", "html", "source", "live"}
         """
-        fetched = brightdata.fetch_html(url, state)
+        fetched = brightdata.fetch_html(url, state, scan_id=scan_id)
         advertised = extract.parse_advertised_price(fetched.html)
 
         if advertised is None:

@@ -35,7 +35,7 @@ _PAYMENT_STOP = ["payment", "pay now", "card number", "billing", "place order", 
 class JourneyAgent:
     name = "Journey Simulator"
 
-    def walk(self, url: str, state: str) -> dict:
+    def walk(self, url: str, state: str, scan_id: str | None = None) -> dict:
         """
         Returns:
             {"state", "final_price", "fees": [FeeItem], "html", "source", "live"}
@@ -47,7 +47,7 @@ class JourneyAgent:
                 logger.warning("[Journey] live browser walk failed (%s) — falling back to fetch", e)
 
         # Fallback: geo-targeted fetch + extraction (also the mock path).
-        fetched = brightdata.fetch_html(url, state)
+        fetched = brightdata.fetch_html(url, state, scan_id=scan_id)
         return self._parse_checkout(fetched.html, state, fetched.source, fetched.live)
 
     # ── Live Browser API path (Playwright over CDP) ───────────────────────────

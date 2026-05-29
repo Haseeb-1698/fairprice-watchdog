@@ -47,7 +47,7 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
     """Crawl + walk + diff + snapshot a listing for one US state.
     Emits per-step events so the UI can render an agent thinking feed."""
     sync_emit(scan_id, "Crawler", "started", f"Loading listing from {state}", state=state, url=url)
-    crawl = CrawlerAgent().load(url, state)
+    crawl = CrawlerAgent().load(url, state, scan_id=scan_id)
     sync_emit(
         scan_id, "Crawler", "result",
         f"Advertised price from {state}: ${crawl['advertised_price']:.2f}",
@@ -57,7 +57,7 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
 
     sync_emit(scan_id, "Journey Simulator", "started",
               f"Walking the checkout funnel from {state} (stops before payment)", state=state)
-    journey = JourneyAgent().walk(url, state)
+    journey = JourneyAgent().walk(url, state, scan_id=scan_id)
     sync_emit(
         scan_id, "Journey Simulator", "result",
         f"Final total from {state}: ${journey['final_price']:.2f} · {len(journey['fees'])} fee line-item(s)",
