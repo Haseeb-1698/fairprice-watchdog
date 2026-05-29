@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models.scan import Scan
 from app.schemas import ComplaintResponse
 from app.services.bundle import generate_bundle
+from app.services.pdf_generator import generate_pdf_complaint
 
 router = APIRouter()
 
@@ -85,3 +86,39 @@ async def generate_complaint(
 
 
 # Made with Bob
+
+
+@router.post("/generate-complaint/{scan_id}/pdf")
+async def generate_complaint_pdf(
+    scan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+) -> Response:
+    """
+    Generate a court-ready PDF complaint for FTC submission
+    
+    Args:
+        scan_id: Unique identifier for the scan
+        db: Database session
+    
+    Returns:
+        PDF file containing formatted complaint with scan details, fees, and evidence hashes
+    
+    Raises:
+        HTTPException: If scan not found or PDF generation fails
+    """
+    try:
+        # Generate the PDF complaint
+        pdf_bytes = await generate_pdf_complaint(scan_id, db)
+        
+        # Return PDF file as download response
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=ftc_complaint_{scan_id}.pdf"
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")

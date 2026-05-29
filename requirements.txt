@@ -41,6 +41,9 @@ anthropic>=0.39.0         # Claude Opus 4.7 LLM provider
 #   mem0ai>=0.1.0          # cross-scan agent memory
 #   paddleocr  paddlepaddle # screenshot/receipt fee OCR for the evidence vault
 
+# PDF Generation
+reportlab==4.0.7
+
 # Utilities
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
