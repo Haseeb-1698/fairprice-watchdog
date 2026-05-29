@@ -292,32 +292,36 @@ export default function App() {
             <span className="font-display text-base font-700">FairPrice <span className="text-gold-400">Watchdog</span></span>
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className={`hidden items-center gap-1.5 sm:inline-flex`}>
+            {isLive() && adminInfo && (
               <span
-                className={`h-2 w-2 rounded-full ${
-                  !isLive()
-                    ? "bg-slate-500"
-                    : adminInfo?.worker_alive
-                      ? "bg-fair"
-                      : adminInfo === null
-                        ? "bg-slate-500"
-                        : "bg-violation"
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-medium ${
+                  adminInfo.worker_alive
+                    ? "border-fair/40 bg-fair/10 text-fair"
+                    : "border-violation/40 bg-violation/10 text-violation"
                 }`}
-              />
-              {isLive() ? (
-                <>
-                  API: {API_BASE.replace(/^https?:\/\//, "")}
-                  {adminInfo && (
-                    <span className="ml-1 text-slate-500">
-                      · worker {adminInfo.worker_alive ? "up" : "down"}
-                      {adminInfo.scan_queue > 0 && ` · queue ${adminInfo.scan_queue}`}
-                    </span>
-                  )}
-                </>
-              ) : (
-                "Demo mode (no backend)"
-              )}
-            </span>
+                title={`scan queue ${adminInfo.scan_queue} · hunt queue ${adminInfo.hunt_queue}`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    adminInfo.worker_alive ? "bg-fair animate-pulse" : "bg-violation"
+                  }`}
+                />
+                worker {adminInfo.worker_alive ? "live" : "down"}
+                {adminInfo.scan_queue > 0 && ` · ${adminInfo.scan_queue} queued`}
+              </span>
+            )}
+            {isLive() && !adminInfo && (
+              <span className="hidden items-center gap-1.5 sm:inline-flex">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500" />
+                checking worker…
+              </span>
+            )}
+            {!isLive() && (
+              <span className="hidden items-center gap-1.5 sm:inline-flex">
+                <span className="h-2 w-2 rounded-full bg-slate-500" />
+                Demo mode (no backend)
+              </span>
+            )}
             {isLive() && (
               <button
                 onClick={handleReset}

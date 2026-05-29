@@ -150,7 +150,7 @@ export default function ScanInput({ live, onRun, disabled }: Props) {
                 <optgroup label="🇬🇧 United Kingdom — DMCCA 2024">
                   {UK_COUNTRIES.map((c) => (
                     <option key={c.code} value={c.code}>
-                      {c.name}
+                      {c.name} ({c.code})
                     </option>
                   ))}
                 </optgroup>
