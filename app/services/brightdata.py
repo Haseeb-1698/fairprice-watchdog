@@ -167,10 +167,23 @@ def _fetch_via_browser(url: str, state: str, timeout: int = 90) -> str:
 # ── Page fetch (Crawler) ──────────────────────────────────────────────────────
 
 def _residential_get(url: str, state: str, timeout: int) -> str:
-    """Direct residential-proxy GET. Used for state-level geo on friendly sites."""
-    resp = requests.get(
-        url, proxies=proxy_for_state(state), verify=False, timeout=(15, timeout),
+    """Direct residential-proxy GET. Used for state-level geo on friendly sites.
+
+    Aggressive timeouts (8s connect, 22s read) and disabled retries so
+    Cloudflare-walled sites fail fast and we cascade to Unlocker quickly.
+    """
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    session = requests.Session()
+    adapter = HTTPAdapter(max_retries=Retry(total=0, connect=0, read=0))
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    resp = session.get(
+        url, proxies=proxy_for_state(state), verify=False,
+        timeout=(8, min(22, timeout)),
         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        allow_redirects=True, stream=False,
     )
     return resp.text
 
@@ -286,10 +299,10 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
 
     # Strategy 1: Residential proxy with state geo (only for US-state pairs).
     if is_us_state and settings.brightdata_live:
-        _ev("thinking", f"Residential proxy + state geo · {state} · 35s deadline")
+        _ev("thinking", f"Residential proxy + state geo · {state} · 30s deadline")
         logger.warning("[BD] residential-state try: %s @ %s", url, state)
         try:
-            html = _run_with_hard_deadline(_residential_get, 35.0, url, state, 30)
+            html = _run_with_hard_deadline(_residential_get, 30.0, url, state, 22)
             credits.record()
             _ev("result", f"Residential succeeded · {len(html)} bytes", bytes=len(html), strategy="residential")
             return FetchResult(url=url, state=state, html=html, status_code=200,
