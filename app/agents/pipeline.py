@@ -237,9 +237,12 @@ async def _persist(brief: ScanBrief) -> None:
                     ftc_clause=fee.ftc_clause,
                 ))
 
+            # Strip NUL bytes — Postgres TEXT rejects 0x00 (Kayak and some
+            # other JS bundles embed binary payloads in the rendered HTML).
+            safe_html = (gl.html or "").replace("\x00", "")
             session.add(EvidenceSnapshot(
                 scan_id=uuid.UUID(brief.scan_id),
-                html_content=gl.html,
+                html_content=safe_html,
                 sha256_hash=gl.snapshot_sha256 or "",
                 timestamp=datetime.now(timezone.utc),
                 storage_path=gl.snapshot_path,
