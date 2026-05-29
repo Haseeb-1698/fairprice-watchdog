@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Eye, Github, Info } from "lucide-react";
+import { Eye, Github, Info, RefreshCw, Loader2 } from "lucide-react";
 import ScanInput, { RunMode } from "./components/ScanInput";
 import PipelineProgress from "./components/PipelineProgress";
 import Results from "./components/Results";
@@ -12,7 +12,9 @@ import {
   API_BASE, isLive, startScan, pollResults, getEvidence, generateComplaint,
   demoResults, demoEvidence,
   getHuntPresets, startHunt, pollHuntStatus, demoHuntStatus,
+  adminStatus, adminRestartWorker,
 } from "./api";
+import type { AdminStatus } from "./api";
 import type { EvidenceSnapshot, HuntPreset, HuntStatus, ScanResults } from "./types";
 
 type Phase = "input" | "running" | "results" | "hunt_running" | "hunt_results";
@@ -29,6 +31,11 @@ export default function App() {
   const [bundle, setBundle] = useState<{ state: "idle" | "loading" | "done" | "error"; url?: string; kind?: "blob" | "link" }>({ state: "idle" });
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
   const [runStartedAt, setRunStartedAt] = useState<number>(0);
+
+  // Admin controls — worker health + manual reset button
+  const [adminInfo, setAdminInfo] = useState<AdminStatus | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   // Hunt state
   const [huntPresets, setHuntPresets] = useState<HuntPreset[]>([]);
@@ -48,6 +55,43 @@ export default function App() {
   useEffect(() => {
     getHuntPresets().then(setHuntPresets).catch(() => {});
   }, []);
+
+  // Poll admin status every 8 s so the worker-alive badge reflects reality.
+  useEffect(() => {
+    if (!isLive()) return;
+    let stopped = false;
+    const tick = async () => {
+      const s = await adminStatus();
+      if (!stopped) setAdminInfo(s);
+    };
+    tick();
+    const id = window.setInterval(tick, 8000);
+    return () => { stopped = true; window.clearInterval(id); };
+  }, []);
+
+  async function handleReset() {
+    if (resetting) return;
+    if (!window.confirm(
+      "Restart the worker and flush both queues? In-flight scans will be lost. Use this if the pipeline looks stuck."
+    )) return;
+    setResetting(true);
+    setResetMsg(null);
+    try {
+      const data = await adminRestartWorker();
+      setResetMsg(
+        data.worker_relaunched
+          ? `Worker restarted · flushed ${data.scan_queue_cleared} scan(s), ${data.event_streams_cleared} event stream(s).`
+          : `Worker killed and queues flushed, but relaunch couldn't be confirmed — ask the operator to start it manually.`
+      );
+      const s = await adminStatus();
+      setAdminInfo(s);
+    } catch (e) {
+      setResetMsg(`Reset failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setResetting(false);
+      window.setTimeout(() => setResetMsg(null), 8000);
+    }
+  }
 
   function finishDemo(url: string, states: [string, string]) {
     stopTicker();
@@ -249,9 +293,46 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-400">
             <span className={`hidden items-center gap-1.5 sm:inline-flex`}>
-              <span className={`h-2 w-2 rounded-full ${isLive() ? "bg-fair" : "bg-slate-500"}`} />
-              {isLive() ? `API: ${API_BASE.replace(/^https?:\/\//, "")}` : "Demo mode (no backend)"}
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  !isLive()
+                    ? "bg-slate-500"
+                    : adminInfo?.worker_alive
+                      ? "bg-fair"
+                      : adminInfo === null
+                        ? "bg-slate-500"
+                        : "bg-violation"
+                }`}
+              />
+              {isLive() ? (
+                <>
+                  API: {API_BASE.replace(/^https?:\/\//, "")}
+                  {adminInfo && (
+                    <span className="ml-1 text-slate-500">
+                      · worker {adminInfo.worker_alive ? "up" : "down"}
+                      {adminInfo.scan_queue > 0 && ` · queue ${adminInfo.scan_queue}`}
+                    </span>
+                  )}
+                </>
+              ) : (
+                "Demo mode (no backend)"
+              )}
             </span>
+            {isLive() && (
+              <button
+                onClick={handleReset}
+                disabled={resetting}
+                title="Restart worker + flush queues (use if a scan is stuck)"
+                className="inline-flex items-center gap-1 rounded-lg border border-ink-600 px-2 py-1 text-[11px] text-slate-400 transition-colors hover:border-warn/60 hover:text-warn disabled:opacity-50"
+              >
+                {resetting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                Reset worker
+              </button>
+            )}
             <a href="https://github.com/Haseeb-1698/fairprice-watchdog" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-gold-400">
               <Github className="h-4 w-4" /> Repo
             </a>
@@ -263,6 +344,14 @@ export default function App() {
         <div className="mx-auto mt-4 max-w-5xl px-5">
           <div className="flex items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-4 py-2.5 text-sm text-warn">
             <Info className="h-4 w-4 shrink-0" /> {notice}
+          </div>
+        </div>
+      )}
+
+      {resetMsg && (
+        <div className="mx-auto mt-3 max-w-5xl px-5">
+          <div className="flex items-center gap-2 rounded-xl border border-fair/40 bg-fair/10 px-4 py-2 text-sm text-fair">
+            <RefreshCw className="h-4 w-4 shrink-0" /> {resetMsg}
           </div>
         </div>
       )}

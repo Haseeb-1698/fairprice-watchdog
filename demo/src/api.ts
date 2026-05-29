@@ -167,6 +167,34 @@ export async function pollHuntStatus(huntId: string, h: PollHandle = {}): Promis
   }
 }
 
+// ── Admin: reset / restart worker (manual recovery for live demo) ────────────
+
+export interface AdminStatus {
+  worker_alive: boolean;
+  scan_queue: number;
+  hunt_queue: number;
+}
+
+export async function adminStatus(): Promise<AdminStatus | null> {
+  if (!isLive()) return null;
+  try {
+    const res = await req("/api/admin/status");
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function adminRestartWorker(): Promise<any> {
+  const res = await req("/api/admin/restart-worker", {
+    method: "POST",
+    headers: localStorage.getItem("admin_token")
+      ? { "X-Admin-Token": localStorage.getItem("admin_token") as string }
+      : {},
+  });
+  return await res.json();
+}
+
 /** Generate a mock hunt result for demo mode with a simulated delay. */
 export function demoHuntStatus(sector: string, city: string, locations: string[]): HuntStatus {
   const label = DEMO_HUNT_PRESETS.find((p) => p.id === sector)?.label ?? "Hunt";
