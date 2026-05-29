@@ -397,22 +397,43 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
     return _mock_fetch(url, state)
 
 
+def _serp_request(query: str, num: int) -> str:
+    """Call Bright Data SERP API directly. Returns raw Google SERP HTML."""
+    target = f"https://www.google.com/search?q={requests.utils.quote(query)}&num={num}"
+    if not settings.BRIGHTDATA_API_KEY or not settings.BRIGHTDATA_SERP_ZONE:
+        raise RuntimeError("SERP zone not configured")
+    resp = requests.post(
+        _REQUEST_API,
+        headers={
+            "Authorization": f"Bearer {settings.BRIGHTDATA_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={"zone": settings.BRIGHTDATA_SERP_ZONE, "url": target, "format": "raw"},
+        timeout=(15, 40),
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
 def serp_search(query: str, state: str = "", num: int = 10) -> list[dict]:
     """
     SERP API search for the Discovery agent (finding new operators).
-    Stubbed for the two-geo demo; wired live when BRIGHTDATA_SERP_ZONE is set.
+    Calls Bright Data /request directly (no thread wrapper — that path caused
+    the deadlock we fixed for the regular Unlocker). Returns the raw HTML so
+    Hunt's _parse_serp_urls can extract organic result links.
     """
     if not settings.brightdata_serp_live:
-        return [{"title": f"[mock] result {i+1} for {query}", "url": f"https://example.com/{i+1}"} for i in range(num)]
-    # Live SERP via Bright Data /request API (zone=serp_api1).
+        return []
     try:
-        target = f"https://www.google.com/search?q={requests.utils.quote(query)}&num={num}"
-        html = _fetch_via_unlocker_api(target, settings.BRIGHTDATA_SERP_ZONE, country="us")
+        html = _serp_request(query, num)
         credits.record()
-        return [{"raw_html": html[:200000], "query": query}]
+        if _is_real_html(html):
+            return [{"raw_html": html[:200000], "query": query}]
+        logger.warning("SERP returned stub (%d bytes) for '%s'", len(html), query)
+        return []
     except Exception as e:
-        logger.warning("SERP search failed (%s) — returning mock", e)
-        return [{"title": f"[mock] {query}", "url": "https://example.com"}]
+        logger.warning("SERP search failed for '%s' (%s)", query, e)
+        return []
 
 
 # ── Mock generation (deterministic, state-varying) ────────────────────────────

@@ -46,6 +46,14 @@ HUNT_PRESETS: dict[str, dict] = {
             '"destination fee" hotel {city} rooms',
             '"amenity fee" hotel {city}',
         ],
+        # Curated real targets we know publish prices + are likely scrape-friendly.
+        # Used as a fallback so a hunt always has something to actually scan,
+        # even when SERP is down or returns 0 organic results.
+        "fallback_urls": [
+            "https://www.booking.com/hotel/de/grand-hotel-esplanade.html",
+            "https://www.scrapingcourse.com/ecommerce/product/abominable-hoodie/",
+            "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+        ],
         "default_city": "Las Vegas",
         "default_locations": ["CA", "TX"],
         "demo_reliability": "Best",
@@ -60,6 +68,10 @@ HUNT_PRESETS: dict[str, dict] = {
             '"admin fee" apartments {city}',
             '"move-in fee" rental {city}',
         ],
+        "fallback_urls": [
+            "https://www.apartments.com/atlanta-ga/",
+            "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+        ],
         "default_city": "Atlanta",
         "default_locations": ["CA", "TX"],
         "demo_reliability": "Good",
@@ -72,6 +84,11 @@ HUNT_PRESETS: dict[str, dict] = {
         "queries": [
             'car rental "hidden fees" {city} airport',
             'vehicle rental surcharges {city}',
+        ],
+        "fallback_urls": [
+            "https://www.kayak.com/cars",
+            "https://www.scrapingcourse.com/ecommerce/product/abominable-hoodie/",
+            "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
         ],
         "default_city": "Miami",
         "default_locations": ["NY", "FL"],
@@ -86,6 +103,10 @@ HUNT_PRESETS: dict[str, dict] = {
             'concert tickets "service fee" {city}',
             'event tickets "hidden charges" {city}',
         ],
+        "fallback_urls": [
+            "https://www.bandsintown.com/",
+            "https://www.scrapingcourse.com/ecommerce/product/abominable-hoodie/",
+        ],
         "default_city": "New York",
         "default_locations": ["CA", "NY"],
         "demo_reliability": "Experimental",
@@ -98,6 +119,10 @@ HUNT_PRESETS: dict[str, dict] = {
         "queries": [
             '"checkout fee" online shopping {city}',
             '"processing fee" e-commerce checkout',
+        ],
+        "fallback_urls": [
+            "https://www.scrapingcourse.com/ecommerce/product/abominable-hoodie/",
+            "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
         ],
         "default_city": "Chicago",
         "default_locations": ["CA", "IL"],
@@ -236,6 +261,21 @@ class HuntOrchestrator:
                 if host and host not in seen_hosts:
                     seen_hosts.add(host)
                     deduped.append(c)
+
+            # If SERP/Firecrawl returned nothing useful, fall back to curated real URLs
+            # for this sector so the hunt still demonstrates the pipeline against live
+            # targets (vs. a meaningless "0 candidates" empty result).
+            if len(deduped) == 0:
+                fallback_urls = preset.get("fallback_urls", [])
+                if fallback_urls:
+                    logger.warning(
+                        "[Hunt] %s SERP empty - using %d curated fallback target(s)",
+                        hunt_id, len(fallback_urls),
+                    )
+                    deduped = [
+                        {"url": u, "title": u, "source": "curated_fallback"}
+                        for u in fallback_urls
+                    ]
 
             hunt["candidates"] = deduped[:15]
             hunt["updated_at"] = _now_iso()
