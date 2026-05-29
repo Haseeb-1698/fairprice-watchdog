@@ -69,6 +69,21 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         source=journey.get("source"), live=journey.get("live"),
     )
 
+    # Reconcile when only ONE price was found on the page (e.g. retail product
+    # with a single sticker price, no itemised checkout). Without this, the UI
+    # shows "advertised $0 / final $X / hidden $X" which is misleading — the
+    # page has no hidden fee, just one price.
+    adv_in, fin_in = crawl["advertised_price"], journey["final_price"]
+    if adv_in == 0 and fin_in > 0 and not journey["fees"]:
+        adv_in = fin_in
+        sync_emit(scan_id, "Diff", "thinking",
+                  f"Single-price page detected for {state} — advertised = final = ${fin_in:.2f}",
+                  state=state)
+    elif fin_in == 0 and adv_in > 0 and not journey["fees"]:
+        fin_in = adv_in
+    crawl["advertised_price"] = adv_in
+    journey["final_price"] = fin_in
+
     sync_emit(scan_id, "Diff", "thinking", f"Comparing advertised vs final for {state}", state=state)
     diff = DiffAgent().analyze(crawl["advertised_price"], journey["final_price"], journey["fees"])
     sync_emit(

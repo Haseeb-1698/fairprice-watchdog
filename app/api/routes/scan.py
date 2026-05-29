@@ -38,14 +38,12 @@ async def create_scan(
     )
     
     db.add(new_scan)
-    await db.flush()  # Flush to get the ID without committing
-    
-    # Enqueue scan job to Redis
-    await enqueue_scan(str(new_scan.id))
-    
-    # Commit the transaction
+    # COMMIT FIRST, then enqueue. If we enqueue before committing, the worker
+    # can BLPOP the id and look it up before this txn is visible — resulting in
+    # "scan has no URL / not found — skipping".
     await db.commit()
     await db.refresh(new_scan)
+    await enqueue_scan(str(new_scan.id))
     
     # Return response with geos from request
     return ScanResponse(

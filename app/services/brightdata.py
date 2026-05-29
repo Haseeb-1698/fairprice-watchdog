@@ -119,6 +119,30 @@ def browser_cdp_url(state: str) -> Optional[str]:
 _REQUEST_API = "https://api.brightdata.com/request"
 
 
+# Heuristic: detect responses that LOOK successful but are actually empty,
+# a captcha challenge page, or an access-denied stub. Those should NOT count
+# as a live success — we want to cascade to the next strategy instead.
+_BAD_HTML_TOKENS = (
+    "access denied", "are you a robot", "verify you are human",
+    "checking your browser", "cloudflare", "unusual traffic",
+    "captcha", "blocked", "request blocked",
+)
+
+
+def _is_real_html(html: str) -> bool:
+    """True if the response looks like real page content (not a stub/challenge)."""
+    if not html:
+        return False
+    if len(html) < 1500:
+        return False
+    lo = html.lower()
+    if "<html" not in lo and "<!doctype" not in lo:
+        return False
+    if any(tok in lo[:6000] for tok in _BAD_HTML_TOKENS):
+        return False
+    return True
+
+
 def _fetch_via_unlocker_api(url: str, zone: str, country: str = "us", timeout: int = 90) -> str:
     """Call Bright Data's /request API (Web Unlocker / SERP). Returns raw HTML."""
     resp = requests.post(
@@ -305,10 +329,14 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
         logger.warning("[BD] unlocker /request try: %s country=%s", url, country)
         try:
             html = _unlocker_request(url, country, timeout=45)
-            credits.record()
-            _ev("result", f"Web Unlocker succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker")
-            return FetchResult(url=url, state=state, html=html, status_code=200,
-                               live=True, source="web_unlocker")
+            if _is_real_html(html):
+                credits.record()
+                _ev("result", f"Web Unlocker succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker")
+                return FetchResult(url=url, state=state, html=html, status_code=200,
+                                   live=True, source="web_unlocker")
+            else:
+                logger.warning("[BD] unlocker returned non-page content (%d bytes) — cascading", len(html))
+                _ev("warn", f"Unlocker returned stub ({len(html)} bytes) -> cascading", strategy="web_unlocker")
         except Exception as e:
             logger.warning("[BD] unlocker /request failed (%s) — trying with render_js", e)
             _ev("warn", f"Unlocker plain failed: {str(e)[:120]} -> trying with JS render", strategy="web_unlocker")
@@ -322,10 +350,14 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
         logger.warning("[BD] residential-state try: %s @ %s", url, state)
         try:
             html = _run_with_hard_deadline(_residential_get, 30.0, url, state, 22)
-            credits.record()
-            _ev("result", f"Residential succeeded · {len(html)} bytes", bytes=len(html), strategy="residential")
-            return FetchResult(url=url, state=state, html=html, status_code=200,
-                               live=True, source="residential")
+            if _is_real_html(html):
+                credits.record()
+                _ev("result", f"Residential succeeded · {len(html)} bytes", bytes=len(html), strategy="residential")
+                return FetchResult(url=url, state=state, html=html, status_code=200,
+                                   live=True, source="residential")
+            else:
+                logger.warning("[BD] residential returned stub (%d bytes) — cascading", len(html))
+                _ev("warn", f"Residential returned stub ({len(html)} bytes) -> cascading", strategy="residential")
         except Exception as e:
             logger.warning("[BD] residential failed (%s)", e)
             _ev("warn", f"Residential timed out/failed: {str(e)[:120]}", strategy="residential")
@@ -335,10 +367,14 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
         _ev("thinking", f"Web Unlocker + render_js · country={country} · 60s timeout")
         try:
             html = _unlocker_request(url, country, timeout=60, render_js=True)
-            credits.record()
-            _ev("result", f"Unlocker+JS succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker_js")
-            return FetchResult(url=url, state=state, html=html, status_code=200,
-                               live=True, source="web_unlocker_js")
+            if _is_real_html(html):
+                credits.record()
+                _ev("result", f"Unlocker+JS succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker_js")
+                return FetchResult(url=url, state=state, html=html, status_code=200,
+                                   live=True, source="web_unlocker_js")
+            else:
+                logger.warning("[BD] unlocker+JS stub (%d bytes)", len(html))
+                _ev("warn", f"Unlocker+JS stub ({len(html)} bytes)", strategy="web_unlocker_js")
         except Exception as e:
             logger.warning("[BD] unlocker + render_js failed (%s)", e)
             _ev("warn", f"Unlocker+JS failed: {str(e)[:120]}", strategy="web_unlocker_js")
