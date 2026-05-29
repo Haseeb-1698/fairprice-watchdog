@@ -64,7 +64,10 @@ def record(cost: float = _DEFAULT_COST) -> CreditState:
         state.estimated_spend_usd = round(state.estimated_spend_usd + cost, 2)
         state.last_call_at = datetime.now(timezone.utc).isoformat()
         _save(state)
-        if state.live_calls % 25 == 0 or not can_spend():
+        # Note: NOT calling can_spend() here (it would re-acquire _lock = deadlock).
+        # Compute the cap check inline so we still log when budget is near/over.
+        over_cap = state.live_calls >= settings.BRIGHTDATA_CREDIT_CAP
+        if state.live_calls % 25 == 0 or over_cap:
             logger.warning("Bright Data: %d/%d live calls, ~$%.2f spent",
                            state.live_calls, settings.BRIGHTDATA_CREDIT_CAP, state.estimated_spend_usd)
         return state
