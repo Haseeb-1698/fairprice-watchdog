@@ -22,7 +22,7 @@
   <img alt="FTC" src="https://img.shields.io/badge/FTC-16%20CFR%20Part%20464-444" />
 </p>
 
-> **Web Data UNLOCKED Hackathon** · Track 3 (Risk) · built on the Bright Data web-data stack.
+> **Web Data UNLOCKED Hackathon** (Bright Data) — submitted to **Security & Compliance** (primary) and **Finance & Market Intelligence**, with the **AI/ML API Challenge** (AIMLAPI vision + reasoning). Built on the Bright Data web-data stack.
 
 ---
 
@@ -112,6 +112,17 @@ The same violation pattern — advertised price ≠ checkout total — is enforc
 - **🇺🇸 United States** — FTC 16 CFR Part 464 (lodging + ticketing) + FTC Act §5 + state UDAP
 - **🇬🇧 United Kingdom** — Digital Markets, Competition & Consumers Act 2024
 - **🇪🇺 European Union (27)** — Unfair Commercial Practices Directive + the incoming Digital Fairness Act
+
+---
+
+## Hackathon tracks
+
+| Track / Challenge | How FairPrice Watchdog fits |
+|---|---|
+| **🛡️ Security & Compliance** *(primary)* | Detects **illegal pricing practices** under the FTC Junk Fees Rule (16 CFR §464) and produces **tamper-proof, court-ready compliance evidence** for regulators and risk/legal teams. Regulatory risk, end to end. |
+| **📈 Finance & Market Intelligence** | Cross-market price intelligence — compares the same product across geographies, quantifies the gap, and surfaces hidden fee structures. |
+| **🤖 AI/ML API Challenge** | Uses **AIMLAPI** as the intelligence layer: GPT-4o **vision** reads JS-rendered prices off rendered screenshots, plus LLM reasoning for fee classification and FTC clause mapping. |
+| **✅ Bright Data (required)** | Four products in production — Web Unlocker, Residential, Browser API, SERP — plus the Zone Management API. |
 
 ---
 
