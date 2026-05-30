@@ -70,51 +70,68 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         source=journey.get("source"), live=journey.get("live"),
     )
 
-    # Capture the rendered screenshot now (JS has executed in Bright Data's
-    # browser) so we can (a) seal it as evidence and (b) read prices off it
-    # with vision when the raw HTML had none.
+    # Capture the rendered screenshot (JS has executed in Bright Data's browser)
+    # so we can (a) seal it as evidence and (b) read prices off it with vision
+    # when the raw HTML had none. Heavy pages sometimes get captured before they
+    # finish rendering, so we retry up to MAX_SHOT_TRIES — a fresh capture is a
+    # fresh render and is likely to catch the loaded page. We keep the LARGEST
+    # screenshot (more rendered = bigger) and stop early once vision finds a price.
+    MAX_SHOT_TRIES = 2
     shot_png = shot_sha = shot_path = None
     if journey.get("live"):
-        sync_emit(scan_id, "Evidence Vault", "action", f"Capturing rendered screenshot for {state}", state=state)
-        shot_png = brightdata.fetch_screenshot(url, state)
-        if shot_png:
-            shot = storage.store_image(scan_id, state, shot_png)
+        _weak = lambda: (crawl["advertised_price"] < 5 or journey["final_price"] < 5)
+        best_png = None
+        for attempt in range(1, MAX_SHOT_TRIES + 1):
+            sync_emit(scan_id, "Evidence Vault", "action",
+                      f"Capturing rendered screenshot for {state}"
+                      + (f" (retry {attempt})" if attempt > 1 else ""), state=state)
+            png = brightdata.fetch_screenshot(url, state)
+            if png and (best_png is None or len(png) > len(best_png)):
+                best_png = png
+            # Only bother with vision if the HTML price looked weak.
+            if png and _weak():
+                if attempt == 1:
+                    sync_emit(scan_id, "Vision", "thinking",
+                              f"Reading prices from the rendered {state} screenshot (JS-rendered prices)",
+                              state=state)
+                v = vision.extract_prices(png)
+                v_adv = float(v.get("advertised_price") or 0)
+                v_fin = float(v.get("final_price") or 0)
+                if v_adv > 0 and crawl["advertised_price"] < 5:
+                    crawl["advertised_price"] = v_adv
+                if v_fin > 0 and journey["final_price"] < 5:
+                    journey["final_price"] = v_fin
+                if not journey["fees"] and v.get("fees"):
+                    from app.agents.types import FeeItem
+                    for f in v["fees"]:
+                        try:
+                            journey["fees"].append(FeeItem(
+                                fee_name=str(f.get("fee_name", "fee")),
+                                fee_amount=float(f.get("fee_amount") or 0),
+                                fee_type=str(f.get("fee_name", "")).split()[0].lower() if f.get("fee_name") else "unknown",
+                            ))
+                        except Exception:
+                            continue
+                if v_adv or v_fin:
+                    sync_emit(scan_id, "Vision", "result",
+                              f"{state}: vision read advertised=${crawl['advertised_price']:.2f} "
+                              f"final=${journey['final_price']:.2f} · {len(journey['fees'])} fee(s)"
+                              + (f" (attempt {attempt})" if attempt > 1 else ""),
+                              state=state, currency=v.get("currency", ""))
+            # Stop retrying once we have a price (or HTML was already strong).
+            if not _weak():
+                break
+            if attempt < MAX_SHOT_TRIES and png and _weak():
+                sync_emit(scan_id, "Vision", "warn",
+                          f"{state}: screenshot likely captured before render finished — recapturing",
+                          state=state)
+        # Seal the best screenshot we got.
+        if best_png:
+            shot = storage.store_image(scan_id, state, best_png)
             shot_sha, shot_path = shot.sha256, shot.storage_path
             sync_emit(scan_id, "Evidence Vault", "done",
-                      f"{state} screenshot sealed · {len(shot_png)//1024} KB · sha256={shot.sha256[:12]}…",
+                      f"{state} screenshot sealed · {len(best_png)//1024} KB · sha256={shot.sha256[:12]}…",
                       state=state, sha256=shot.sha256, storage_path=shot.storage_path)
-
-    # Vision fallback: modern sites render prices in JS, so the raw HTML often
-    # has none ($0) or junk (a stray "$1"). Read prices off the rendered
-    # screenshot like a human would when the HTML numbers look unreliable.
-    _weak = (crawl["advertised_price"] < 5 or journey["final_price"] < 5)
-    if shot_png and _weak:
-        sync_emit(scan_id, "Vision", "thinking",
-                  f"Reading prices from the rendered {state} screenshot (JS-rendered prices)", state=state)
-        v = vision.extract_prices(shot_png)
-        v_adv = float(v.get("advertised_price") or 0)
-        v_fin = float(v.get("final_price") or 0)
-        if v_adv > 0 and crawl["advertised_price"] == 0:
-            crawl["advertised_price"] = v_adv
-        if v_fin > 0 and journey["final_price"] == 0:
-            journey["final_price"] = v_fin
-        # Vision-found fee line items (only if HTML found none).
-        if not journey["fees"] and v.get("fees"):
-            from app.agents.types import FeeItem
-            for f in v["fees"]:
-                try:
-                    journey["fees"].append(FeeItem(
-                        fee_name=str(f.get("fee_name", "fee")),
-                        fee_amount=float(f.get("fee_amount") or 0),
-                        fee_type=str(f.get("fee_name", "")).split()[0].lower() if f.get("fee_name") else "unknown",
-                    ))
-                except Exception:
-                    continue
-        if v_adv or v_fin:
-            sync_emit(scan_id, "Vision", "result",
-                      f"{state}: vision read advertised=${crawl['advertised_price']:.2f} "
-                      f"final=${journey['final_price']:.2f} · {len(journey['fees'])} fee(s)",
-                      state=state, currency=v.get("currency", ""))
 
     # Reconcile when only ONE price was found on the page (e.g. retail product
     # with a single sticker price, no itemised checkout). Without this, the UI
