@@ -60,21 +60,20 @@ class Settings(BaseSettings):
     AZURE_KIMI_MODEL: str = "Kimi-K2.5"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
-    # AIMLAPI — OpenAI-compatible gateway to 400+ models (hackathon sponsor)
+    # OpenAI-compatible gateway fallback (used when the primary LLM is rate-limited).
     AIMLAPI_KEY: str = ""
     AIMLAPI_ENDPOINT: str = "https://api.aimlapi.com/v1"
     AIMLAPI_MODEL: str = "gpt-4o"
 
-    # ── Hackathon sponsor services (optional, all degrade gracefully) ────────
-    # Brave Search — real-time web search for the Discovery agent (real URLs +
-    # snippets). $5/mo free credits; 50 req/s. Fixes the SERP "0 candidates" gap.
-    BRAVE_API_KEY: str = ""
-    # Cognee — knowledge-graph memory for cross-scan agent recall
+    # ── Discovery / enrichment providers (optional, degrade gracefully) ──────
+    # Web search provider for the Discovery agent (real URLs + snippets at runtime).
+    WEB_SEARCH_API_KEY: str = ""
+    # Knowledge-graph memory for cross-scan operator recall.
     COGNEE_API_KEY: str = ""
-    # Triggerware — query external APIs/SaaS as SQL tables (regulator analytics)
+    # External-data query layer (analytics over scans).
     TRIGGERWARE_API_KEY: str = ""
     TRIGGERWARE_ENDPOINT: str = "https://api.triggerware.com"
-    # Speechmatics — speech-to-text for voice scan commands
+    # Speech-to-text for voice scan commands.
     SPEECHMATICS_API_KEY: str = ""
     SPEECHMATICS_BATCH_URL: str = "https://asr.api.speechmatics.com/v2"
 

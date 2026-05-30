@@ -41,6 +41,8 @@ def normalize_html(html: str) -> str:
         text = re.sub(r"(?s)<[^>]+>", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
+    
+
 
 def parse_advertised_price(html: str) -> Optional[float]:
     m = re.search(r'data-advertised-price="([0-9.]+)"', html)

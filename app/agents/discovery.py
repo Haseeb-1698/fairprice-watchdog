@@ -3,9 +3,9 @@ Discovery Agent (PRD agent #5).
 
 Finds new operators / booking platforms to expand the monitoring set at RUNTIME,
 using (in priority order):
-  1. Brave Search API   — real human-readable URLs + snippets (primary)
-  2. Firecrawl search   — structured search (if configured)
-  3. Bright Data SERP    — raw Google SERP HTML (fallback)
+  1. Web search       — real human-readable URLs + snippets (primary)
+  2. Firecrawl search — structured search (if configured)
+  3. Bright Data SERP — raw Google SERP HTML (fallback)
 
 Returns de-duplicated candidate sites the orchestrator queues scans against.
 Self-contained: with no credentials it returns [] so the caller can use its
@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from urllib.parse import urlparse
 
-from app.services import brave_search, brightdata, firecrawl_client
+from app.services import web_search, brightdata, firecrawl_client
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,12 @@ class DiscoveryAgent:
         discovered live at runtime. Tries Brave → Firecrawl → Bright Data SERP."""
         candidates: list[dict] = []
 
-        # 1. Brave Search — primary runtime source (real URLs + snippets).
-        for item in brave_search.search(query, count=limit, country=country):
+        # 1. Web search — primary runtime source (real URLs + snippets).
+        for item in web_search.search(query, count=limit, country=country):
             candidates.append({
                 "title": item.get("title", ""),
                 "url": item["url"],
-                "source": "brave",
+                "source": "web_search",
             })
 
         # 2. Firecrawl search (if configured).
