@@ -7,15 +7,24 @@ from io import BytesIO
 from typing import Optional
 import uuid
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, KeepTogether
-)
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+# ReportLab is an OPTIONAL dependency. Import it defensively so a missing
+# install can never take down the whole API at startup (this module is pulled
+# in by app.main via the complaint router). If it's absent, generate_pdf_complaint
+# raises a clean 500 at call time instead.
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        PageBreak, KeepTogether
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -56,7 +65,13 @@ async def generate_pdf_complaint(scan_id: uuid.UUID, db: AsyncSession) -> bytes:
     
     Raises:
         ValueError: If scan not found
+        RuntimeError: If reportlab is not installed
     """
+    if not REPORTLAB_AVAILABLE:
+        raise RuntimeError(
+            "PDF generation requires reportlab — run 'pip install reportlab'. "
+            "The evidence-bundle ZIP endpoint works without it."
+        )
     # Fetch scan with all related data
     result = await db.execute(
         select(Scan)
