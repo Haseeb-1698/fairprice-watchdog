@@ -94,6 +94,17 @@ export async function generateComplaint(scanId: string): Promise<{ kind: "blob" 
   return { kind: "blob", url: URL.createObjectURL(blob) };
 }
 
+/** Generate the court-ready PDF complaint (ReportLab). Returns a blob URL. */
+export async function generatePdfComplaint(scanId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/generate-complaint/${scanId}/pdf`, {
+    method: "POST",
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new ApiError(`pdf → HTTP ${res.status}`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 // ── Demo fallbacks (no backend, or backend unreachable) ──────────────────────
 export function demoResults(url: string, states: string[]): ScanResults {
   return mockResults(url, states);

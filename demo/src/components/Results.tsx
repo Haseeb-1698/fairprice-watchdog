@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import type { EvidenceSnapshot, Listing, ScanResults } from "../types";
 import { stateName } from "../lib/states";
-import { API_BASE, isLive } from "../api";
+import { API_BASE, isLive, generatePdfComplaint } from "../api";
 
 const money = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
@@ -169,7 +169,10 @@ export default function Results({ results, evidence, isDemo, onReset, onGenerate
           <h3 className="flex items-center gap-2 font-display text-lg font-600">
             <Hash className="h-5 w-5 text-gold-400" /> Evidence vault
           </h3>
-          <BundleButton bundle={bundle} onClick={onGenerateBundle} />
+          <div className="flex flex-wrap items-center gap-2">
+            {isLive() && results.scan?.id && <PdfComplaintButton scanId={results.scan.id} />}
+            <BundleButton bundle={bundle} onClick={onGenerateBundle} />
+          </div>
         </div>
         <p className="mt-1 text-xs text-slate-500">Timestamped HTML captures, SHA-256 sealed for chain-of-custody.</p>
         <ul className="mt-4 space-y-2">
@@ -324,6 +327,37 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
       <div className="flex items-center gap-1.5 text-xs text-slate-500">{icon}{label}</div>
       <div className="mt-1 font-display text-xl font-700 tabular text-slate-100">{value}</div>
     </div>
+  );
+}
+
+function PdfComplaintButton({ scanId }: { scanId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [url, setUrl] = useState<string | null>(null);
+
+  if (state === "done" && url) {
+    return (
+      <a
+        href={url}
+        download={`ftc-complaint-${scanId.slice(0, 8)}.pdf`}
+        className="inline-flex items-center gap-2 rounded-xl border border-gold-500/50 bg-gold-500/10 px-4 py-2 text-sm font-600 text-gold-300 hover:bg-gold-500/20"
+      >
+        <FileDown className="h-4 w-4" /> Download PDF complaint
+      </a>
+    );
+  }
+  return (
+    <button
+      onClick={async () => {
+        setState("loading");
+        try { setUrl(await generatePdfComplaint(scanId)); setState("done"); }
+        catch { setState("error"); }
+      }}
+      disabled={state === "loading"}
+      className="inline-flex items-center gap-2 rounded-xl border border-ink-600 px-4 py-2 text-sm font-600 text-slate-200 hover:border-gold-500/50 disabled:opacity-50"
+    >
+      {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+      {state === "error" ? "PDF failed — retry" : "Generate PDF complaint"}
+    </button>
   );
 }
 

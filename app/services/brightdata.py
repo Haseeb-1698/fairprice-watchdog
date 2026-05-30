@@ -387,10 +387,10 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
     # Called directly (no thread wrapper) because `requests` to api.brightdata.com is
     # a clean HTTPS POST with its own connect+read timeout that fires reliably.
     if settings.brightdata_unlocker_live:
-        _ev("thinking", f"Web Unlocker /request · country={country} · 45s timeout")
+        _ev("thinking", f"Web Unlocker /request · country={country} · 90s timeout")
         logger.warning("[BD] unlocker /request try: %s country=%s", url, country)
         try:
-            html = _unlocker_request(url, country, timeout=45)
+            html = _unlocker_request(url, country, timeout=90)
             if _is_real_html(html):
                 credits.record()
                 _ev("result", f"Web Unlocker succeeded · {len(html)} bytes", bytes=len(html), strategy="web_unlocker")
