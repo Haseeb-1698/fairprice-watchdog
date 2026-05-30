@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Eye, Github, Info, RefreshCw, Loader2, Network } from "lucide-react";
+import { Github, Info, RefreshCw, Loader2, Network } from "lucide-react";
 import ScanInput, { RunMode } from "./components/ScanInput";
 import PipelineProgress from "./components/PipelineProgress";
 import Results from "./components/Results";
@@ -297,7 +297,11 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-ink-600/60 bg-ink-900/70 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
           <button onClick={showApp} className="flex items-center gap-2" title="Home">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-500 text-ink-900"><Eye className="h-4.5 w-4.5" /></span>
+            <img
+              src={`${import.meta.env.BASE_URL}dog.png`}
+              alt="FairPrice Watchdog"
+              className="h-9 w-9 rounded-lg bg-gold-500/15 object-contain p-0.5"
+            />
             <span className="font-display text-base font-700">FairPrice <span className="text-gold-400">Watchdog</span></span>
           </button>
           <div className="flex items-center gap-3 text-xs text-slate-400">
