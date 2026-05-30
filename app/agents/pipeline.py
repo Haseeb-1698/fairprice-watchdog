@@ -82,10 +82,14 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         _weak = lambda: (crawl["advertised_price"] < 5 or journey["final_price"] < 5)
         best_png = None
         for attempt in range(1, MAX_SHOT_TRIES + 1):
+            # First pass: fast Web Unlocker screenshot. On retry (price still
+            # weak), use the Browser API — a real Chromium that waits for JS to
+            # render, catching prices the early capture missed.
+            use_browser = attempt > 1
             sync_emit(scan_id, "Evidence Vault", "action",
                       f"Capturing rendered screenshot for {state}"
-                      + (f" (retry {attempt})" if attempt > 1 else ""), state=state)
-            png = brightdata.fetch_screenshot(url, state)
+                      + (" via Browser API (full render)" if use_browser else ""), state=state)
+            png = brightdata.fetch_screenshot(url, state, prefer_browser=use_browser)
             if png and (best_png is None or len(png) > len(best_png)):
                 best_png = png
             # Only bother with vision if the HTML price looked weak.

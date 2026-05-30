@@ -190,7 +190,50 @@ def _fetch_via_browser(url: str, state: str, timeout: int = 90) -> str:
 
 # ── Screenshot capture (visual evidence) ──────────────────────────────────────
 
-def fetch_screenshot(url: str, geo: str = "", timeout: int = 70) -> Optional[bytes]:
+def _browser_cdp(geo: str = "") -> Optional[str]:
+    """Build the Browser API CDP websocket URL with optional country geo."""
+    if not (settings.BRIGHTDATA_CUSTOMER_ID and settings.BRIGHTDATA_BROWSER_ZONE
+            and settings.BRIGHTDATA_BROWSER_PASSWORD):
+        return None
+    user = f"brd-customer-{settings.BRIGHTDATA_CUSTOMER_ID}-zone-{settings.BRIGHTDATA_BROWSER_ZONE}"
+    cc = _country_for(geo) if geo else ""
+    if cc:
+        user += f"-country-{cc}"
+    return f"wss://{user}:{settings.BRIGHTDATA_BROWSER_PASSWORD}@{settings.BRIGHTDATA_BROWSER_HOST}:9222"
+
+
+def fetch_screenshot_browser(url: str, geo: str = "", settle_ms: int = 9000) -> Optional[bytes]:
+    """
+    Render `url` in the Bright Data Browser API (a real Chromium we control),
+    WAIT for JS to finish (settle_ms), then full-page screenshot. This catches
+    JS-rendered prices that the Web Unlocker's early screenshot misses.
+    Returns PNG bytes or None.
+    """
+    cdp = _browser_cdp(geo)
+    if not cdp:
+        return None
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(cdp, timeout=60000)
+            try:
+                page = browser.new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=90000)
+                page.wait_for_timeout(settle_ms)   # let JS-rendered prices appear
+                png = page.screenshot(full_page=True)
+            finally:
+                browser.close()
+        if png and (png[:8].startswith(b"\x89PNG") or png[:3] == b"\xff\xd8\xff"):
+            credits.record()
+            logger.info("[BD] browser screenshot %s @ %s → %d bytes", url, geo, len(png))
+            return png
+        return None
+    except Exception as e:
+        logger.warning("[BD] browser screenshot failed for %s @ %s: %s", url, geo, e)
+        return None
+
+
+def fetch_screenshot(url: str, geo: str = "", timeout: int = 70, prefer_browser: bool = False) -> Optional[bytes]:
     """
     Capture a full-page PNG screenshot of `url` via the Web Unlocker /request API
     (data_format=screenshot). Returns PNG bytes, or None if unavailable.
@@ -198,9 +241,16 @@ def fetch_screenshot(url: str, geo: str = "", timeout: int = 70) -> Optional[byt
     This is the visual evidence companion to the HTML capture — a court exhibit
     showing the actual rendered checkout, sealed with its own SHA-256 hash.
     """
-    if not settings.brightdata_unlocker_live:
-        return None
     if not credits.can_spend():
+        return None
+    # Prefer the Browser API (full render + wait) for JS-heavy sites; it captures
+    # prices the early Web Unlocker screenshot misses. Falls back to the Unlocker.
+    if prefer_browser and _browser_cdp(geo):
+        png = fetch_screenshot_browser(url, geo)
+        if png:
+            return png
+        logger.warning("[BD] browser screenshot empty — falling back to unlocker screenshot")
+    if not settings.brightdata_unlocker_live:
         return None
     country = _country_for(geo) if geo else "us"
     try:
