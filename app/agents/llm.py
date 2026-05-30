@@ -37,6 +37,8 @@ def _providers_in_order() -> list[str]:
         chain.append("azure_kimi")
     if settings.OPENAI_API_KEY:
         chain.append("openai")
+    if getattr(settings, "AIMLAPI_KEY", ""):
+        chain.append("aimlapi")
     chain.append("mock")
     if pref != "auto":
         # Pin the preferred provider first, keep the rest as fallback.
@@ -106,6 +108,15 @@ def _call_openai(system: str, user: str, max_tokens: int) -> str:
     )
 
 
+def _call_aimlapi(system: str, user: str, max_tokens: int) -> str:
+    # OpenAI-compatible multi-model gateway — resilient fallback if the primary
+    # LLM is rate-limited (gives the pipeline a second independent provider).
+    return _call_openai_compatible(
+        settings.AIMLAPI_ENDPOINT, settings.AIMLAPI_KEY, settings.AIMLAPI_MODEL,
+        system, user, max_tokens, temperature=0.1,
+    )
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def complete(system: str, user: str, max_tokens: int = 1500) -> str:
@@ -121,6 +132,8 @@ def complete(system: str, user: str, max_tokens: int = 1500) -> str:
                 return _call_azure_kimi(system, user, max_tokens)
             if provider == "openai":
                 return _call_openai(system, user, max_tokens)
+            if provider == "aimlapi":
+                return _call_aimlapi(system, user, max_tokens)
             if provider == "mock":
                 return _mock_complete(system, user)
         except Exception as e:

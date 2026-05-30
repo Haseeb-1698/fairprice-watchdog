@@ -169,6 +169,28 @@ export async function pollHuntStatus(huntId: string, h: PollHandle = {}): Promis
   }
 }
 
+// ── Voice scan (speech-to-text) ──────────────────────────────────────────────
+
+export interface VoiceIntent {
+  ok: boolean;
+  transcript: string;
+  url?: string;
+  sector?: string;
+  locations?: string[];
+}
+
+export async function transcribeVoice(audio: Blob): Promise<VoiceIntent> {
+  const form = new FormData();
+  form.append("audio", audio, "clip.webm");
+  const res = await fetch(`${API_BASE}/api/voice/transcribe`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new ApiError(`voice → HTTP ${res.status}`);
+  return await res.json();
+}
+
 // ── Admin: reset / restart worker (manual recovery for live demo) ────────────
 
 export interface AdminStatus {

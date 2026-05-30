@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ShieldCheck, Search, MapPin, Zap, Globe2 } from "lucide-react";
+import { ShieldCheck, Search, MapPin, Zap, Globe2, Mic, Loader2 } from "lucide-react";
 import { US_STATES, geoName, COVERAGE } from "../lib/coverage";
+import { isLive, transcribeVoice } from "../api";
 import WorldMap from "./WorldMap";
 
 // Selectable jurisdictions grouped for the dropdown: US states, then UK, then EU 27.
@@ -29,6 +30,53 @@ export default function ScanInput({ live, onRun, disabled }: Props) {
   const [b, setB] = useState("TX");
   const [mode, setMode] = useState<RunMode>(live ? "live" : "demo");
   const [touched, setTouched] = useState(false);
+
+  // Voice scan state
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [voiceMsg, setVoiceMsg] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  async function toggleVoice() {
+    if (voiceState === "recording") {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (voiceState === "transcribing") return;
+    setVoiceMsg(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setVoiceState("transcribing");
+        try {
+          const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+          const intent = await transcribeVoice(blob);
+          setVoiceMsg(`Heard: "${intent.transcript}"`);
+          if (intent.url) setUrl(intent.url);
+          if (intent.locations && intent.locations.length >= 2) {
+            setA(intent.locations[0]);
+            setB(intent.locations[1]);
+          }
+        } catch (err) {
+          setVoiceMsg("Couldn't transcribe — type your target instead.");
+        } finally {
+          setVoiceState("idle");
+        }
+      };
+      rec.start();
+      recorderRef.current = rec;
+      setVoiceState("recording");
+      // Auto-stop after 7s so the clip stays short.
+      window.setTimeout(() => { if (rec.state === "recording") rec.stop(); }, 7000);
+    } catch {
+      setVoiceMsg("Microphone access denied.");
+      setVoiceState("idle");
+    }
+  }
 
   const urlValid = /^https?:\/\/.+\..+/.test(url.trim());
   const statesValid = a !== b;
@@ -103,21 +151,49 @@ export default function ScanInput({ live, onRun, disabled }: Props) {
         <label htmlFor="target-url" className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
           <Globe2 className="h-4 w-4 text-gold-400" /> Target listing or checkout URL
         </label>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          <input
-            id="target-url"
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onBlur={() => setTouched(true)}
-            placeholder="https://…"
-            aria-invalid={touched && !urlValid}
-            className="w-full rounded-xl border border-ink-600 bg-ink-900 py-3 pl-10 pr-3 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-gold-500 focus:outline-none"
-          />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              id="target-url"
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onBlur={() => setTouched(true)}
+              placeholder="https://…"
+              aria-invalid={touched && !urlValid}
+              className="w-full rounded-xl border border-ink-600 bg-ink-900 py-3 pl-10 pr-3 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-gold-500 focus:outline-none"
+            />
+          </div>
+          {isLive() && (
+            <button
+              type="button"
+              onClick={toggleVoice}
+              title="Speak your target — e.g. 'scan booking dot com from California and Texas'"
+              className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-3 text-sm font-medium transition-colors ${
+                voiceState === "recording"
+                  ? "border-violation/60 bg-violation/15 text-violation animate-pulse"
+                  : voiceState === "transcribing"
+                    ? "border-gold-500/40 bg-gold-500/10 text-gold-400"
+                    : "border-ink-600 bg-ink-900 text-slate-300 hover:border-gold-500/60 hover:text-gold-400"
+              }`}
+            >
+              {voiceState === "transcribing" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {voiceState === "recording" ? "Listening…" : voiceState === "transcribing" ? "…" : "Voice"}
+              </span>
+            </button>
+          )}
         </div>
         {touched && !urlValid && (
           <p role="alert" className="mt-1.5 text-xs text-violation">Enter a valid http(s) URL to scan.</p>
+        )}
+        {voiceMsg && (
+          <p className="mt-1.5 text-xs text-gold-400">{voiceMsg}</p>
         )}
 
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
