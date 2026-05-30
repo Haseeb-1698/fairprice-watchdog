@@ -24,6 +24,7 @@ from app.agents.crawler import CrawlerAgent
 from app.agents.diff import DiffAgent
 from app.agents.journey import JourneyAgent
 from app.agents.law_mapper import LawMapperAgent
+from app.agents import vision
 from app.agents.types import GeoComparison, GeoListing, ScanBrief
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -69,6 +70,50 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         source=journey.get("source"), live=journey.get("live"),
     )
 
+    # Capture the rendered screenshot now (JS has executed in Bright Data's
+    # browser) so we can (a) seal it as evidence and (b) read prices off it
+    # with vision when the raw HTML had none.
+    shot_png = shot_sha = shot_path = None
+    if journey.get("live"):
+        sync_emit(scan_id, "Evidence Vault", "action", f"Capturing rendered screenshot for {state}", state=state)
+        shot_png = brightdata.fetch_screenshot(url, state)
+        if shot_png:
+            shot = storage.store_image(scan_id, state, shot_png)
+            shot_sha, shot_path = shot.sha256, shot.storage_path
+            sync_emit(scan_id, "Evidence Vault", "done",
+                      f"{state} screenshot sealed · {len(shot_png)//1024} KB · sha256={shot.sha256[:12]}…",
+                      state=state, sha256=shot.sha256, storage_path=shot.storage_path)
+
+    # Vision fallback: modern sites render prices in JS, so the raw HTML often
+    # has none ($0). Read them off the rendered screenshot like a human would.
+    if shot_png and (crawl["advertised_price"] == 0 or journey["final_price"] == 0):
+        sync_emit(scan_id, "Vision", "thinking",
+                  f"Reading prices from the rendered {state} screenshot (JS-rendered prices)", state=state)
+        v = vision.extract_prices(shot_png)
+        v_adv = float(v.get("advertised_price") or 0)
+        v_fin = float(v.get("final_price") or 0)
+        if v_adv > 0 and crawl["advertised_price"] == 0:
+            crawl["advertised_price"] = v_adv
+        if v_fin > 0 and journey["final_price"] == 0:
+            journey["final_price"] = v_fin
+        # Vision-found fee line items (only if HTML found none).
+        if not journey["fees"] and v.get("fees"):
+            from app.agents.types import FeeItem
+            for f in v["fees"]:
+                try:
+                    journey["fees"].append(FeeItem(
+                        fee_name=str(f.get("fee_name", "fee")),
+                        fee_amount=float(f.get("fee_amount") or 0),
+                        fee_type=str(f.get("fee_name", "")).split()[0].lower() if f.get("fee_name") else "unknown",
+                    ))
+                except Exception:
+                    continue
+        if v_adv or v_fin:
+            sync_emit(scan_id, "Vision", "result",
+                      f"{state}: vision read advertised=${crawl['advertised_price']:.2f} "
+                      f"final=${journey['final_price']:.2f} · {len(journey['fees'])} fee(s)",
+                      state=state, currency=v.get("currency", ""))
+
     # Reconcile when only ONE price was found on the page (e.g. retail product
     # with a single sticker price, no itemised checkout). Without this, the UI
     # shows "advertised $0 / final $X / hidden $X" which is misleading — the
@@ -110,21 +155,6 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         f"{state} snapshot sealed · sha256={snap.sha256[:12]}…",
         state=state, sha256=snap.sha256, storage_path=snap.storage_path,
     )
-
-    # Visual evidence: capture a full-page screenshot and seal it too. Best-effort —
-    # only on live captures (mock/timeout listings have no real page to shoot).
-    shot_sha = shot_path = None
-    if journey.get("live"):
-        sync_emit(scan_id, "Evidence Vault", "action", f"Capturing screenshot for {state}", state=state)
-        png = brightdata.fetch_screenshot(url, state)
-        if png:
-            shot = storage.store_image(scan_id, state, png)
-            shot_sha, shot_path = shot.sha256, shot.storage_path
-            sync_emit(
-                scan_id, "Evidence Vault", "done",
-                f"{state} screenshot sealed · {len(png)//1024} KB · sha256={shot.sha256[:12]}…",
-                state=state, sha256=shot.sha256, storage_path=shot.storage_path,
-            )
 
     return GeoListing(
         state=state,
