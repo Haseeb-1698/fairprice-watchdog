@@ -31,7 +31,7 @@ from app.models.evidence_snapshot import EvidenceSnapshot
 from app.models.fee import Fee
 from app.models.listing import Listing
 from app.models.scan import Scan
-from app.services import storage, brightdata
+from app.services import storage, brightdata, memory
 from app.services.events import sync_emit, clear as clear_events
 from app.services.queue import update_scan_status
 
@@ -158,6 +158,20 @@ async def run_scan(scan_id: str, url: str, states: list[str] | None = None) -> S
               url=url, states=states)
     await update_scan_status(scan_id, "processing")
 
+    # Recall: have we scanned this operator before? Surface prior intelligence.
+    try:
+        domain = memory.domain_of(url)
+        prior = memory.recall(domain)
+        if prior:
+            sync_emit(
+                scan_id, "Memory", "thinking",
+                f"Recall: seen {domain} {prior.get('scan_count', 0)}× before · "
+                f"prior fee types: {', '.join(prior.get('fee_types', [])) or 'none'}",
+                domain=domain, prior=prior,
+            )
+    except Exception:
+        pass
+
     try:
         listings = await _execute(scan_id, url, states)
 
@@ -173,6 +187,20 @@ async def run_scan(scan_id: str, url: str, states: list[str] | None = None) -> S
 
         await _persist(brief)
         await update_scan_status(scan_id, "completed")
+
+        # Remember this operator's fee patterns for future scans (fire-and-forget;
+        # the knowledge-graph enrichment runs in a background thread).
+        try:
+            fee_types = sorted({f.fee_type for l in brief.listings for f in l.fees if f.fee_type})
+            gap = brief.comparison.delta if (brief.comparison and brief.comparison.discrimination_detected) else 0
+            memory.record(memory.domain_of(url), {
+                "fee_types": fee_types,
+                "geo_gap": gap,
+                "summary": brief.summary,
+            })
+        except Exception:
+            pass
+
         sync_emit(scan_id, "Filing", "done",
                   f"Scan complete · {brief.summary}",
                   summary=brief.summary)
