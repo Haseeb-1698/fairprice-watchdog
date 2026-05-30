@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Eye, Github, Info, RefreshCw, Loader2 } from "lucide-react";
+import { Eye, Github, Info, RefreshCw, Loader2, Network } from "lucide-react";
 import ScanInput, { RunMode } from "./components/ScanInput";
 import PipelineProgress from "./components/PipelineProgress";
 import Results from "./components/Results";
 import Landing from "./components/Landing";
 import HuntPresets from "./components/HuntPresets";
 import ProbePanel from "./components/ProbePanel";
+import Arch from "./components/Arch";
 import HuntProgress from "./components/HuntProgress";
 import HuntResults from "./components/HuntResults";
 import {
@@ -37,6 +38,13 @@ export default function App() {
   const [adminInfo, setAdminInfo] = useState<AdminStatus | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
+
+  // Top-level view: live demo vs architecture page
+  const [view, setView] = useState<"app" | "arch">(
+    typeof window !== "undefined" && window.location.hash === "#arch" ? "arch" : "app"
+  );
+  function showArch() { setView("arch"); window.location.hash = "arch"; window.scrollTo(0, 0); }
+  function showApp() { setView("app"); window.location.hash = ""; window.scrollTo(0, 0); }
 
   // Hunt state
   const [huntPresets, setHuntPresets] = useState<HuntPreset[]>([]);
@@ -288,10 +296,10 @@ export default function App() {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b border-ink-600/60 bg-ink-900/70 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-2">
+          <button onClick={showApp} className="flex items-center gap-2" title="Home">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-500 text-ink-900"><Eye className="h-4.5 w-4.5" /></span>
             <span className="font-display text-base font-700">FairPrice <span className="text-gold-400">Watchdog</span></span>
-          </div>
+          </button>
           <div className="flex items-center gap-3 text-xs text-slate-400">
             {isLive() && adminInfo && (
               <span
@@ -338,6 +346,14 @@ export default function App() {
                 Reset worker
               </button>
             )}
+            <button
+              onClick={view === "arch" ? showApp : showArch}
+              className={`inline-flex items-center gap-1 transition-colors hover:text-gold-400 ${
+                view === "arch" ? "text-gold-400" : ""
+              }`}
+            >
+              <Network className="h-4 w-4" /> {view === "arch" ? "Demo" : "Architecture"}
+            </button>
             <a href="https://github.com/Haseeb-1698/fairprice-watchdog" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-gold-400">
               <Github className="h-4 w-4" /> Repo
             </a>
@@ -345,7 +361,9 @@ export default function App() {
         </div>
       </header>
 
-      {notice && (
+      {view === "arch" && <Arch onBack={showApp} />}
+
+      {view === "app" && notice && (
         <div className="mx-auto mt-4 max-w-5xl px-5">
           <div className="flex items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-4 py-2.5 text-sm text-warn">
             <Info className="h-4 w-4 shrink-0" /> {notice}
@@ -353,7 +371,7 @@ export default function App() {
         </div>
       )}
 
-      {resetMsg && (
+      {view === "app" && resetMsg && (
         <div className="mx-auto mt-3 max-w-5xl px-5">
           <div className="flex items-center gap-2 rounded-xl border border-fair/40 bg-fair/10 px-4 py-2 text-sm text-fair">
             <RefreshCw className="h-4 w-4 shrink-0" /> {resetMsg}
@@ -361,6 +379,7 @@ export default function App() {
         </div>
       )}
 
+      {view === "app" && (
       <AnimatePresence mode="wait">
         {phase === "input" && (
           <motion.div key="input" exit={{ opacity: 0, y: -10 }}>
@@ -413,6 +432,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      )}
 
       <footer className="mx-auto max-w-6xl px-5 py-10 text-center text-xs text-slate-600">
         Stops before any payment is submitted · evidence SHA-256 sealed · FTC 16 CFR Part 464
