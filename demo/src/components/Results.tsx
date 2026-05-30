@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle, ShieldCheck, FileDown, Hash, FileWarning,
-  TrendingUp, Scale, RotateCcw, Loader2, ExternalLink, ArrowLeft,
+  TrendingUp, Scale, RotateCcw, Loader2, ExternalLink, ArrowLeft, Camera,
 } from "lucide-react";
 import type { EvidenceSnapshot, Listing, ScanResults } from "../types";
 import { stateName } from "../lib/states";
+import { API_BASE, isLive } from "../api";
 
 const money = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
@@ -147,6 +148,9 @@ export default function Results({ results, evidence, isDemo, onReset, onGenerate
         <Stat label="Evidence snapshots" value={String(evidence.length)} icon={<Hash className="h-4 w-4" />} />
       </div>
 
+      {/* Visual evidence — both locations' screenshots side by side */}
+      <ScreenshotEvidence scanId={results.scan?.id} states={listings.map((l) => l.location_state)} />
+
       {/* Evidence vault */}
       <div className="mt-8 rounded-2xl border border-ink-600 bg-ink-800/80 p-5 shadow-panel">
         <div className="flex items-center justify-between gap-3">
@@ -242,6 +246,62 @@ function FeeBreakdown({ listing }: { listing: Listing }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function ScreenshotEvidence({ scanId, states }: { scanId?: string; states: string[] }) {
+  const [available, setAvailable] = useState<Record<string, boolean>>({});
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    if (!scanId || !isLive()) { setChecked(true); return; }
+    fetch(`${API_BASE}/api/screenshots/${scanId}`, { signal: AbortSignal.timeout(8000) })
+      .then((r) => r.json())
+      .then((d) => {
+        const map: Record<string, boolean> = {};
+        (d.screenshots || []).forEach((s: any) => { map[(s.state || "").toUpperCase()] = true; });
+        setAvailable(map);
+      })
+      .catch(() => {})
+      .finally(() => setChecked(true));
+  }, [scanId]);
+
+  if (!checked) return null;
+  const shots = states.filter((s) => available[s.toUpperCase()]);
+  if (!scanId || shots.length === 0) return null;
+
+  return (
+    <div className="mt-8">
+      <h3 className="mb-1 flex items-center gap-2 font-display text-lg font-600">
+        <Camera className="h-5 w-5 text-gold-400" /> Visual evidence — captured checkouts
+      </h3>
+      <p className="mb-3 text-xs text-slate-500">
+        Full-page screenshots taken at scan time, sealed with SHA-256 in the evidence vault and embedded in the PDF complaint.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {shots.map((s) => (
+          <figure key={s} className="overflow-hidden rounded-xl border border-ink-600 bg-ink-900">
+            <figcaption className="flex items-center justify-between border-b border-ink-600 px-3 py-2">
+              <span className="font-display text-sm font-600 text-slate-100">{stateName(s)}</span>
+              <span className="rounded-md border border-ink-600 px-2 py-0.5 font-mono text-[10px] text-slate-400">{s}</span>
+            </figcaption>
+            <a
+              href={`${API_BASE}/api/screenshot/${scanId}/${s}`}
+              target="_blank"
+              rel="noreferrer"
+              title="Open full screenshot"
+            >
+              <img
+                src={`${API_BASE}/api/screenshot/${scanId}/${s}`}
+                alt={`Captured checkout from ${stateName(s)}`}
+                loading="lazy"
+                className="block max-h-[420px] w-full object-cover object-top transition-opacity hover:opacity-90"
+              />
+            </a>
+          </figure>
+        ))}
+      </div>
     </div>
   );
 }

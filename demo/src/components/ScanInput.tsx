@@ -18,18 +18,90 @@ interface Props {
   disabled?: boolean;
 }
 
-const PRESETS: Array<{ label: string; url: string; a: string; b: string }> = [
-  { label: "Atlanta apartment", url: "https://www.apartments.com/atlanta-ga/", a: "CA", b: "TX" },
-  { label: "Vegas hotel", url: "https://www.hotels.com/", a: "CA", b: "NY" },
-  { label: "Event tickets", url: "https://www.ticketmaster.com/", a: "CA", b: "FL" },
+// Team-verified live targets — each scrapes cleanly through the pipeline and
+// has a known result. Ranked best-first. Clicking one auto-fills the URL AND
+// both locations and switches to Live mode.
+interface ProvenTarget {
+  rank: number;
+  label: string;
+  sector: string;
+  url: string;
+  a: string;
+  b: string;
+  note: string;
+  tier: "Headline" | "Strong" | "Reliable";
+}
+
+const PROVEN_TARGETS: ProvenTarget[] = [
+  {
+    rank: 1,
+    label: "Grand Hotel Esplanade — Booking.com",
+    sector: "Hotel · lodging (FTC §464)",
+    url: "https://www.booking.com/hotel/de/grand-hotel-esplanade.html",
+    a: "GB", b: "DE",
+    note: "Real capture €1,875 → €2,375 · sealed HTML + screenshot evidence",
+    tier: "Headline",
+  },
+  {
+    rank: 2,
+    label: "Properstar — international property",
+    sector: "Real estate · rentals",
+    url: "https://www.properstar.com/",
+    a: "GB", b: "DE",
+    note: "Live scrape · €100k+ listings · proves UK↔EU coverage",
+    tier: "Strong",
+  },
+  {
+    rank: 3,
+    label: "GlobalListings — property portal",
+    sector: "Real estate · rentals",
+    url: "https://www.globallistings.com/",
+    a: "US", b: "DE",
+    note: "Live scrape · $275k–$2.4M listings · US↔EU coverage",
+    tier: "Strong",
+  },
+  {
+    rank: 4,
+    label: "Books to Scrape — single product",
+    sector: "Retail (reliability anchor)",
+    url: "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+    a: "CA", b: "TX",
+    note: "Always-on · proves the full 6-agent pipeline + evidence chain",
+    tier: "Reliable",
+  },
+  {
+    rank: 5,
+    label: "ScrapingCourse — product page",
+    sector: "E-commerce (reliability anchor)",
+    url: "https://www.scrapingcourse.com/ecommerce/product/abominable-hoodie/",
+    a: "CA", b: "TX",
+    note: "Always-on · clean single-price live capture",
+    tier: "Reliable",
+  },
 ];
 
+const TIER_STYLE: Record<ProvenTarget["tier"], string> = {
+  Headline: "border-gold-500/50 bg-gold-500/10 text-gold-300",
+  Strong: "border-fair/40 bg-fair/10 text-fair",
+  Reliable: "border-ink-600 bg-ink-700 text-slate-400",
+};
+
 export default function ScanInput({ live, onRun, disabled }: Props) {
-  const [url, setUrl] = useState(PRESETS[0].url);
-  const [a, setA] = useState("CA");
-  const [b, setB] = useState("TX");
+  const [url, setUrl] = useState(PROVEN_TARGETS[0].url);
+  const [a, setA] = useState(PROVEN_TARGETS[0].a);
+  const [b, setB] = useState(PROVEN_TARGETS[0].b);
   const [mode, setMode] = useState<RunMode>(live ? "live" : "demo");
   const [touched, setTouched] = useState(false);
+  const [pickedTarget, setPickedTarget] = useState<number>(PROVEN_TARGETS[0].rank);
+
+  function selectTarget(t: ProvenTarget) {
+    setUrl(t.url);
+    setA(t.a);
+    setB(t.b);
+    setPickedTarget(t.rank);
+    if (live) setMode("live");   // proven targets run live, not mock
+    setTouched(false);
+  }
 
   // Voice scan state
   const [voiceState, setVoiceState] = useState<"idle" | "recording" | "transcribing">("idle");
@@ -249,18 +321,44 @@ export default function ScanInput({ live, onRun, disabled }: Props) {
           residential proxy for true geo targeting. International picks (UK / EU) compare at the country level.
         </p>
 
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-500">Try:</span>
-          {PRESETS.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              onClick={() => { setUrl(p.url); setA(p.a); setB(p.b); }}
-              className="rounded-full border border-ink-600 bg-ink-700 px-3 py-1 text-xs text-slate-300 transition-colors hover:border-gold-500/60 hover:text-gold-400"
-            >
-              {p.label}
-            </button>
-          ))}
+        {/* Team-verified live targets — click to auto-fill URL + locations */}
+        <div className="mt-5">
+          <div className="mb-2 flex items-center gap-2 text-xs">
+            <span className="font-600 uppercase tracking-wider text-gold-500">Proven live targets</span>
+            <span className="rounded bg-fair/15 px-1.5 py-0.5 text-[10px] font-600 uppercase text-fair">team-verified</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {PROVEN_TARGETS.map((t) => {
+              const active = pickedTarget === t.rank && url === t.url;
+              return (
+                <button
+                  key={t.rank}
+                  type="button"
+                  onClick={() => selectTarget(t)}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
+                    active
+                      ? "border-gold-500/70 bg-gold-500/10"
+                      : "border-ink-600 bg-ink-900/60 hover:border-gold-500/40"
+                  }`}
+                >
+                  <div className="flex w-full items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-700 font-mono text-[10px] font-700 text-slate-300">
+                      {t.rank}
+                    </span>
+                    <span className="flex-1 truncate font-display text-sm font-600 text-slate-100">{t.label}</span>
+                    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-600 uppercase ${TIER_STYLE[t.tier]}`}>
+                      {t.tier}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>{t.sector}</span>
+                    <span className="font-mono text-slate-400">{t.a} vs {t.b}</span>
+                  </div>
+                  <p className="text-[11px] leading-snug text-slate-500">{t.note}</p>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
