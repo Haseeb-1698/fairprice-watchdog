@@ -6,6 +6,7 @@ import PipelineProgress from "./components/PipelineProgress";
 import Results from "./components/Results";
 import Landing from "./components/Landing";
 import HuntPresets from "./components/HuntPresets";
+import ProbePanel from "./components/ProbePanel";
 import HuntProgress from "./components/HuntProgress";
 import HuntResults from "./components/HuntResults";
 import {
@@ -365,6 +366,8 @@ export default function App() {
           <motion.div key="input" exit={{ opacity: 0, y: -10 }}>
             {/* HERO: URL + location picker + world map — at the top */}
             <ScanInput live={isLive()} onRun={run} />
+            {/* Fast geo price-discrimination probe — instant demo moment */}
+            <ProbePanel />
             {/* Sector hunt cards — below the hero */}
             <HuntPresets presets={huntPresets} onStartHunt={startHuntFlow} />
             {/* Regulatory "Why now" — at the bottom */}

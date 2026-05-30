@@ -169,6 +169,27 @@ export async function pollHuntStatus(huntId: string, h: PollHandle = {}): Promis
   }
 }
 
+// ── Fast price-discrimination probe (geo-biased search) ──────────────────────
+
+export interface ProbeCountry {
+  code: string;
+  label: string;
+  flag: string;
+  prices: string[];
+  top_url: string;
+  top_title: string;
+}
+export interface ProbeResult {
+  query: string;
+  results: ProbeCountry[];
+  discrimination: boolean;
+}
+
+export async function priceProbe(query: string): Promise<ProbeResult> {
+  const res = await req(`/api/probe?q=${encodeURIComponent(query)}`);
+  return await res.json();
+}
+
 // ── Voice scan (speech-to-text) ──────────────────────────────────────────────
 
 export interface VoiceIntent {
