@@ -85,8 +85,10 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
                       state=state, sha256=shot.sha256, storage_path=shot.storage_path)
 
     # Vision fallback: modern sites render prices in JS, so the raw HTML often
-    # has none ($0). Read them off the rendered screenshot like a human would.
-    if shot_png and (crawl["advertised_price"] == 0 or journey["final_price"] == 0):
+    # has none ($0) or junk (a stray "$1"). Read prices off the rendered
+    # screenshot like a human would when the HTML numbers look unreliable.
+    _weak = (crawl["advertised_price"] < 5 or journey["final_price"] < 5)
+    if shot_png and _weak:
         sync_emit(scan_id, "Vision", "thinking",
                   f"Reading prices from the rendered {state} screenshot (JS-rendered prices)", state=state)
         v = vision.extract_prices(shot_png)
