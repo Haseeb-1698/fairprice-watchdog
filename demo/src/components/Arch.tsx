@@ -71,7 +71,7 @@ export default function Arch({ onBack }: { onBack: () => void }) {
 
       {/* Diagram */}
       <div className="mt-8 overflow-x-auto rounded-2xl border border-ink-600 bg-ink-900/60 p-4 shadow-panel">
-        <svg viewBox="0 0 1260 560" className="block min-w-[1000px]" role="img"
+        <svg viewBox="0 0 1260 600" className="block min-w-[1000px]" role="img"
              aria-label="FairPrice Watchdog architecture diagram">
           <defs>
             {["arr", "ok", "info", "warn", "gold"].map((id) => {
@@ -149,10 +149,11 @@ export default function Arch({ onBack }: { onBack: () => void }) {
           <FlowArrow d="M262 460 Q300 460 320 120" color={C.info} marker="info" />
           <FlowArrow d="M790 130 Q900 130 934 116" color={C.fair} marker="ok" w={2.4} />
 
-          {/* footer band */}
-          <rect x="40" y="486" width="1180" height="30" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(148,163,184,0.15)" />
-          <text x="56" y="505" fill={C.muted} fontSize="11">
-            Cross-cutting: hard 90s/strategy deadlines · 300s/geo cap (never hangs) · credit budget · honesty labels (live / partial / mock) · 29-jurisdiction geo (US · UK · EU 27)
+          {/* footer band — placed BELOW the phase bands (which end at y=526) with a gap */}
+          <rect x="16" y="548" width="1228" height="36" rx="8" fill="rgba(244,199,82,0.06)" stroke="rgba(244,199,82,0.18)" />
+          <text x="36" y="566" fill={C.gold} fontSize="10" fontWeight="700" letterSpacing="0.5">CROSS-CUTTING</text>
+          <text x="36" y="579" fill={C.muted} fontSize="11">
+            hard 90s/strategy deadlines · 300s/geo cap (never hangs) · credit budget · honesty labels (live / partial / mock) · 29-jurisdiction geo (US · UK · EU 27)
           </text>
         </svg>
       </div>
