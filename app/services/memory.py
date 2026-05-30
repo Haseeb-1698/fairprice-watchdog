@@ -85,7 +85,13 @@ def record(domain: str, observation: dict) -> None:
     except Exception as e:
         logger.debug("memory record failed: %s", e)
 
-    # Background graph enrichment — fully detached, best-effort.
+    # Background graph enrichment — fully detached, best-effort, and OFF by
+    # default. Cognee's init is heavy and its LLM client chokes on our
+    # LLM_PROVIDER='auto' value, so we only run it when explicitly enabled
+    # (COGNEE_ENABLED=1) with a Cognee-specific LLM config. The local store
+    # above already powers the recall feature reliably without it.
+    if os.environ.get("COGNEE_ENABLED", "").strip() not in ("1", "true", "True"):
+        return
     t = threading.Thread(target=_enrich_graph, args=(domain, observation), daemon=True)
     t.start()
 
