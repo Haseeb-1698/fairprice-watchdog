@@ -188,6 +188,52 @@ def _fetch_via_browser(url: str, state: str, timeout: int = 90) -> str:
     return html
 
 
+# ── Screenshot capture (visual evidence) ──────────────────────────────────────
+
+def fetch_screenshot(url: str, geo: str = "", timeout: int = 70) -> Optional[bytes]:
+    """
+    Capture a full-page PNG screenshot of `url` via the Web Unlocker /request API
+    (data_format=screenshot). Returns PNG bytes, or None if unavailable.
+
+    This is the visual evidence companion to the HTML capture — a court exhibit
+    showing the actual rendered checkout, sealed with its own SHA-256 hash.
+    """
+    if not settings.brightdata_unlocker_live:
+        return None
+    if not credits.can_spend():
+        return None
+    country = _country_for(geo) if geo else "us"
+    try:
+        resp = requests.post(
+            _REQUEST_API,
+            headers={
+                "Authorization": f"Bearer {settings.BRIGHTDATA_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "zone": settings.BRIGHTDATA_ZONE,
+                "url": url,
+                "format": "raw",
+                "data_format": "screenshot",
+                "country": country,
+            },
+            timeout=(15, timeout),
+        )
+        resp.raise_for_status()
+        content = resp.content
+        # Validate it's actually a PNG/JPEG (Bright Data sends image bytes with a
+        # JSON content-type header). Reject error payloads.
+        if content[:8].startswith(b"\x89PNG") or content[:3] == b"\xff\xd8\xff":
+            credits.record()
+            logger.info("[BD] screenshot %s @ %s → %d bytes", url, geo, len(content))
+            return content
+        logger.warning("[BD] screenshot for %s returned non-image (%d bytes)", url, len(content))
+        return None
+    except Exception as e:
+        logger.warning("[BD] screenshot failed for %s @ %s: %s", url, geo, e)
+        return None
+
+
 # ── Page fetch (Crawler) ──────────────────────────────────────────────────────
 
 def _residential_get(url: str, state: str, timeout: int) -> str:

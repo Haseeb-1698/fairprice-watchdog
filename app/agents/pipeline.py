@@ -111,6 +111,21 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         state=state, sha256=snap.sha256, storage_path=snap.storage_path,
     )
 
+    # Visual evidence: capture a full-page screenshot and seal it too. Best-effort —
+    # only on live captures (mock/timeout listings have no real page to shoot).
+    shot_sha = shot_path = None
+    if journey.get("live"):
+        sync_emit(scan_id, "Evidence Vault", "action", f"Capturing screenshot for {state}", state=state)
+        png = brightdata.fetch_screenshot(url, state)
+        if png:
+            shot = storage.store_image(scan_id, state, png)
+            shot_sha, shot_path = shot.sha256, shot.storage_path
+            sync_emit(
+                scan_id, "Evidence Vault", "done",
+                f"{state} screenshot sealed · {len(png)//1024} KB · sha256={shot.sha256[:12]}…",
+                state=state, sha256=shot.sha256, storage_path=shot.storage_path,
+            )
+
     return GeoListing(
         state=state,
         advertised_price=round(crawl["advertised_price"], 2),
@@ -120,6 +135,8 @@ def scan_state(scan_id: str, url: str, state: str) -> GeoListing:
         snapshot_sha256=snap.sha256,
         snapshot_path=snap.storage_path,
         snapshot_url=snap.public_url,
+        screenshot_sha256=shot_sha,
+        screenshot_path=shot_path,
         source=journey["source"],
         live=journey["live"],
     )
@@ -247,6 +264,17 @@ async def _persist(brief: ScanBrief) -> None:
                 timestamp=datetime.now(timezone.utc),
                 storage_path=gl.snapshot_path,
             ))
+
+            # Visual evidence row — screenshot PNG (html_content empty; the
+            # storage_path points at the .png so the PDF generator can embed it).
+            if gl.screenshot_path:
+                session.add(EvidenceSnapshot(
+                    scan_id=uuid.UUID(brief.scan_id),
+                    html_content="",
+                    sha256_hash=gl.screenshot_sha256 or "",
+                    timestamp=datetime.now(timezone.utc),
+                    storage_path=gl.screenshot_path,
+                ))
 
         await session.commit()
 

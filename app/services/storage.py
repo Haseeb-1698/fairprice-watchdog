@@ -161,6 +161,43 @@ def store_snapshot(scan_id: str, state: str, html: str, step: str = "checkout") 
     )
 
 
+def store_image(scan_id: str, state: str, image: bytes, step: str = "checkout",
+                ext: str = "png") -> StoredSnapshot:
+    """
+    Store a screenshot PNG as visual evidence. Key = {scan_id}/{state}/{step}-{sha256}.png
+    Returns a StoredSnapshot with the image's own SHA-256 for the evidence chain.
+    """
+    digest = sha256_hex(image)
+    key = f"{scan_id}/{state}/{step}-{digest[:16]}.{ext}"
+    ts = datetime.now(timezone.utc)
+    ctype = "image/png" if ext == "png" else "image/jpeg"
+
+    client = _get_client()
+    if client is not None:
+        try:
+            client.put_object(
+                Bucket=_bucket(), Key=key, Body=image, ContentType=ctype,
+                Metadata={"sha256": digest, "scan_id": scan_id, "state": state, "step": step},
+            )
+            return StoredSnapshot(
+                sha256=digest,
+                storage_path=f"s3://{_bucket()}/{key}",
+                public_url=_public_url(key),
+                backend=_resolved_backend or settings.STORAGE_BACKEND,
+                timestamp=ts, size=len(image),
+            )
+        except Exception as e:
+            logger.warning("Screenshot upload failed (%s) — local fallback", e)
+
+    path = _LOCAL_FALLBACK_DIR / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(image)
+    return StoredSnapshot(
+        sha256=digest, storage_path=f"file://{path.resolve()}",
+        public_url=None, backend="local", timestamp=ts, size=len(image),
+    )
+
+
 def store_json(scan_id: str, name: str, payload: dict) -> StoredSnapshot:
     """Store a JSON artifact (e.g. structured complaint / evidence bundle manifest)."""
     data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")

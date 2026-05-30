@@ -18,7 +18,7 @@ try:
     from reportlab.lib.units import inch
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-        PageBreak, KeepTogether
+        PageBreak, KeepTogether, Image
     )
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
     REPORTLAB_AVAILABLE = True
@@ -33,6 +33,35 @@ from app.models.scan import Scan
 from app.models.listing import Listing
 from app.models.fee import Fee
 from app.models.evidence_snapshot import EvidenceSnapshot
+
+
+def _load_evidence_image(storage_path: Optional[str]) -> Optional[bytes]:
+    """Load screenshot bytes from a storage_path (file:// local or s3:// vault)."""
+    if not storage_path:
+        return None
+    try:
+        if storage_path.startswith("file://"):
+            from urllib.parse import urlparse, unquote
+            p = unquote(urlparse(storage_path).path)
+            # On Windows the parsed path may start with a leading slash before the drive.
+            import os as _os
+            if _os.name == "nt" and p.startswith("/") and len(p) > 2 and p[2] == ":":
+                p = p[1:]
+            with open(p, "rb") as f:
+                return f.read()
+        if storage_path.startswith("s3://"):
+            # s3://bucket/key — fetch via the evidence vault client.
+            from app.services import storage as _storage
+            client = _storage._get_client()
+            if client is None:
+                return None
+            _, _, rest = storage_path.partition("s3://")
+            bucket, _, key = rest.partition("/")
+            obj = client.get_object(Bucket=bucket, Key=key)
+            return obj["Body"].read()
+    except Exception:
+        return None
+    return None
 
 
 def _add_page_number(canvas, doc):
@@ -291,7 +320,45 @@ async def generate_pdf_complaint(scan_id: uuid.UUID, db: AsyncSession) -> bytes:
         story.append(hash_table)
     else:
         story.append(Paragraph("No evidence snapshots recorded.", normal_style))
-    
+
+    # ── Visual Evidence: embed screenshot exhibits (PNG snapshots) ────────────
+    shots = [s for s in (scan.evidence_snapshots or [])
+             if (s.storage_path or "").lower().endswith((".png", ".jpg", ".jpeg"))]
+    if shots:
+        story.append(PageBreak())
+        story.append(Paragraph("Visual Evidence (Screenshot Exhibits)", heading_style))
+        story.append(Paragraph(
+            "Full-page captures of the checkout as rendered to the consumer, each sealed "
+            "with its own SHA-256 hash for chain-of-custody.",
+            normal_style,
+        ))
+        story.append(Spacer(1, 0.15 * inch))
+        for i, s in enumerate(shots, 1):
+            img_bytes = _load_evidence_image(s.storage_path)
+            if not img_bytes:
+                continue
+            try:
+                img = Image(BytesIO(img_bytes))
+                # Scale to fit page width (~6.5in), preserve aspect ratio, cap height.
+                max_w = 6.0 * inch
+                ratio = (img.imageHeight / img.imageWidth) if img.imageWidth else 1.4
+                img.drawWidth = max_w
+                img.drawHeight = min(max_w * ratio, 7.0 * inch)
+                story.append(Paragraph(
+                    f"<b>Exhibit {chr(64 + i)}</b> — captured "
+                    f"{s.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                    normal_style,
+                ))
+                story.append(Spacer(1, 0.05 * inch))
+                story.append(img)
+                story.append(Paragraph(
+                    f"<font name='Courier' size='7'>SHA-256: {s.sha256_hash}</font>",
+                    normal_style,
+                ))
+                story.append(Spacer(1, 0.25 * inch))
+            except Exception:
+                continue
+
     story.append(Spacer(1, 0.3 * inch))
     
     # Summary Section

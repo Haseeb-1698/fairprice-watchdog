@@ -33,6 +33,9 @@ class GeoListing:
     snapshot_sha256: Optional[str] = None
     snapshot_path: Optional[str] = None
     snapshot_url: Optional[str] = None
+    # Visual evidence — full-page screenshot PNG, sealed with its own SHA-256.
+    screenshot_sha256: Optional[str] = None
+    screenshot_path: Optional[str] = None
     source: str = "mock"            # residential | web_unlocker | browser_api | mock
     live: bool = False
 
