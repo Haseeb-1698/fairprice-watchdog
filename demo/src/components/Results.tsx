@@ -97,7 +97,19 @@ export default function Results({ results, evidence, isDemo, onReset, onGenerate
             <h2 className="font-display text-lg font-700 sm:text-xl">
               {discrimination ? "Geographic price discrimination detected" : "No significant geo price gap"}
             </h2>
-            <p className="font-mono text-xs text-slate-400">{results.scan?.url}{isDemo && " · demo data"}</p>
+            {results.scan?.url ? (
+              <a
+                href={results.scan.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-mono text-xs text-slate-400 underline decoration-slate-600 underline-offset-2 hover:text-gold-400"
+                title="Open the exact page that was scanned"
+              >
+                {results.scan.url}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : null}
+            {isDemo && <span className="ml-1 font-mono text-xs text-slate-500">· demo data</span>}
           </div>
         </div>
         <button onClick={onReset} className="inline-flex items-center gap-2 self-start rounded-xl border border-ink-600 px-4 py-2 text-sm text-slate-300 hover:border-gold-500/60 sm:self-auto">
