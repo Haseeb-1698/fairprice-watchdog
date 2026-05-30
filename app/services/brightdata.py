@@ -323,12 +323,28 @@ _UNLOCKER_COUNTRY_FOR_GEO = {
 }
 
 
-def _country_for(geo: str) -> str:
-    """Best-effort ISO country code for a geo code. US states → 'us'."""
+# Codes the UI sends for COUNTRIES (GB + EU 27). These win over the US-state
+# interpretation when they collide — notably DE = Germany, which is also
+# Delaware's US state code. The UI never offers Delaware, so a "DE" always
+# means Germany here.
+_COUNTRY_CODES = {v.upper() for v in _UNLOCKER_COUNTRY_FOR_GEO if v != "US"} | {"GB", "UK"}
+
+
+def _is_us_state(geo: str) -> bool:
+    """True only for genuine US-state intent (country codes win the collision)."""
     g = (geo or "").upper()
+    return g in _US_STATES and g not in _COUNTRY_CODES
+
+
+def _country_for(geo: str) -> str:
+    """ISO country code for a geo code. Country codes (GB/EU) win over the
+    US-state interpretation; remaining US states map to 'us'."""
+    g = (geo or "").upper()
+    if g in _UNLOCKER_COUNTRY_FOR_GEO:
+        return _UNLOCKER_COUNTRY_FOR_GEO[g]
     if g in _US_STATES:
         return "us"
-    return _UNLOCKER_COUNTRY_FOR_GEO.get(g, "us")
+    return "us"
 
 
 def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = None) -> FetchResult:
@@ -355,7 +371,7 @@ def fetch_html(url: str, state: str, timeout: int = 60, scan_id: str | None = No
 
     country = _country_for(state)
     state_upper = (state or "").upper()
-    is_us_state = state_upper in _US_STATES
+    is_us_state = _is_us_state(state)
 
     # Lazy import to avoid a hard dep cycle if events module is missing.
     def _ev(level: str, message: str, **data):
