@@ -31,7 +31,7 @@ from app.models.evidence_snapshot import EvidenceSnapshot
 from app.models.fee import Fee
 from app.models.listing import Listing
 from app.models.scan import Scan
-from app.services import storage
+from app.services import storage, brightdata
 from app.services.events import sync_emit, clear as clear_events
 from app.services.queue import update_scan_status
 
