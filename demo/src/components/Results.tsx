@@ -332,31 +332,42 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
 
 function PdfComplaintButton({ scanId }: { scanId: string }) {
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [url, setUrl] = useState<string | null>(null);
 
-  if (state === "done" && url) {
-    return (
-      <a
-        href={url}
-        download={`ftc-complaint-${scanId.slice(0, 8)}.pdf`}
-        className="inline-flex items-center gap-2 rounded-xl border border-gold-500/50 bg-gold-500/10 px-4 py-2 text-sm font-600 text-gold-300 hover:bg-gold-500/20"
-      >
-        <FileDown className="h-4 w-4" /> Download PDF complaint
-      </a>
-    );
+  async function run() {
+    if (state === "loading") return;
+    setState("loading");
+    try {
+      const url = await generatePdfComplaint(scanId);
+      // Trigger the download programmatically (one click, no second step).
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ftc-complaint-${scanId.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setState("done");
+    } catch {
+      setState("error");
+    }
   }
+
   return (
     <button
-      onClick={async () => {
-        setState("loading");
-        try { setUrl(await generatePdfComplaint(scanId)); setState("done"); }
-        catch { setState("error"); }
-      }}
+      onClick={run}
       disabled={state === "loading"}
-      className="inline-flex items-center gap-2 rounded-xl border border-ink-600 px-4 py-2 text-sm font-600 text-slate-200 hover:border-gold-500/50 disabled:opacity-50"
+      title="Generate + download the court-ready FTC complaint PDF (with screenshot exhibits)"
+      className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-600 disabled:opacity-50 ${
+        state === "done"
+          ? "border-fair/50 bg-fair/10 text-fair"
+          : "border-gold-500/50 bg-gold-500/10 text-gold-300 hover:bg-gold-500/20"
+      }`}
     >
-      {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
-      {state === "error" ? "PDF failed — retry" : "Generate PDF complaint"}
+      {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+      {state === "loading" ? "Building PDF… (~30s)"
+        : state === "done" ? "PDF downloaded ✓ — click for another"
+        : state === "error" ? "PDF failed — retry"
+        : "Download PDF complaint"}
     </button>
   );
 }
