@@ -296,13 +296,13 @@ export default function App() {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b border-ink-600/60 bg-ink-900/70 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-          <button onClick={showApp} className="flex items-center gap-2" title="Home">
+          <button onClick={showApp} className="flex items-center gap-2.5" title="Home">
             <img
               src={`${import.meta.env.BASE_URL}dog.png`}
               alt="FairPrice Watchdog"
-              className="h-9 w-9 rounded-lg bg-gold-500/15 object-contain p-0.5"
+              className="h-14 w-14 object-contain"
             />
-            <span className="font-display text-base font-700">FairPrice <span className="text-gold-400">Watchdog</span></span>
+            <span className="font-display text-lg font-700">FairPrice <span className="text-gold-400">Watchdog</span></span>
           </button>
           <div className="flex items-center gap-3 text-xs text-slate-400">
             {isLive() && adminInfo && (
