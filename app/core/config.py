@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     AIMLAPI_MODEL: str = "gpt-4o"
 
     # ── Hackathon sponsor services (optional, all degrade gracefully) ────────
+    # Brave Search — real-time web search for the Discovery agent (real URLs +
+    # snippets). $5/mo free credits; 50 req/s. Fixes the SERP "0 candidates" gap.
+    BRAVE_API_KEY: str = ""
     # Cognee — knowledge-graph memory for cross-scan agent recall
     COGNEE_API_KEY: str = ""
     # Triggerware — query external APIs/SaaS as SQL tables (regulator analytics)

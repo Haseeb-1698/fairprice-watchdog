@@ -262,14 +262,15 @@ class HuntOrchestrator:
                     seen_hosts.add(host)
                     deduped.append(c)
 
-            # If SERP/Firecrawl returned nothing useful, fall back to curated real URLs
-            # for this sector so the hunt still demonstrates the pipeline against live
-            # targets (vs. a meaningless "0 candidates" empty result).
+            # Runtime discovery (Brave → Firecrawl → SERP) is the primary path.
+            # ONLY if every live source returned nothing do we use the curated
+            # last-resort list, so the demo never dead-ends on a transient search
+            # outage. In normal operation `deduped` is fully runtime-discovered.
             if len(deduped) == 0:
                 fallback_urls = preset.get("fallback_urls", [])
                 if fallback_urls:
                     logger.warning(
-                        "[Hunt] %s SERP empty - using %d curated fallback target(s)",
+                        "[Hunt] %s live discovery returned 0 — using %d curated last-resort target(s)",
                         hunt_id, len(fallback_urls),
                     )
                     deduped = [
